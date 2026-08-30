@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 # ---------------------------------------------------------------------------
-# Compile final image composite to cloud-optimized geotiff
+# Compile final image composite
 # Author: Timm Nawrocki
 # Last Updated: 2026-08-29
 # Usage: Must be executed in a Python 3.11+ installation with GDAL 3.9+.
-# Description: 'Compile final image composite to cloud-optimized geotiff' compiles the Vivid 2023 and custom composite images using the image selection raster to inform which data to retain.
+# Description: 'Compile final image composite' compiles the Vivid 2023 and custom composite images using the image selection raster to inform which data to retain.
 # ---------------------------------------------------------------------------
 
 # Import packages
