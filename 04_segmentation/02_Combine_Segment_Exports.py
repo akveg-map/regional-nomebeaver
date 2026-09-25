@@ -2,8 +2,8 @@
 # ---------------------------------------------------------------------------
 # Combine segment exports
 # Author: Timm Nawrocki
-# Last Updated: 2026-08-29
-# Usage: Must be executed in a Python 3.11+ installation with GDAL 3.9+.
+# Last Updated: 2026-09-21
+# Usage: Must be executed in a Python 3.11+ installation with GDAL 3.9+. This script requires approximately 64 GB of RAM.
 # Description: 'Combine segment exports' merges the exported tiles for the segments and converts them to cloud-optimized geotiff.
 # ---------------------------------------------------------------------------
 
@@ -14,6 +14,7 @@ import time
 import numpy as np
 from osgeo import gdal
 import rasterio
+import whitebox
 from google.cloud import storage
 from akutils import *
 
@@ -49,8 +50,10 @@ area_input = os.path.join(region_folder, 'NomeBeaver_MapDomain_2m_3338.tif')
 segment_tiles = glob.glob(f'{segment_folder}/export/*.tif')
 
 # Define intermediate files
-merged_vrt = os.path.join(segment_folder, 'custom_merged.vrt')
-merged_intermediate = os.path.join(segment_folder, 'segment_merged.tif')
+merged_vrt = os.path.join(segment_folder, 'segments_merged.vrt')
+merged_intermediate = os.path.join(segment_folder, 'segments_merged.tif')
+clumped_intermediate = os.path.join(segment_folder, 'segments_clumped.tif')
+masked_intermediate = os.path.join(segment_folder, 'segments_masked.tif')
 
 # Define output files
 segment_output = os.path.join(segment_folder, output_name)
@@ -59,7 +62,7 @@ segment_output = os.path.join(segment_folder, output_name)
 ####____________________________________________________
 
 # Create merged raster if it does not already exist
-if not os.path.exists(merged_intermediate):
+if not os.path.exists(masked_intermediate):
 
     # Read area bounds
     area_bounds = raster_bounds(area_input)
@@ -78,6 +81,25 @@ if not os.path.exists(merged_intermediate):
     vrt_data = None
     end_timing(start_time)
 
+    # Convert VRT to raster for WhiteboxTools
+    print('Converting VRT to GeoTIFF...')
+    start_time = time.time()
+    gdal.Translate(merged_intermediate, merged_vrt, creationOptions=['BIGTIFF=YES'])
+    end_timing(start_time)
+
+    # Run WhiteboxTools Clump (Connected Component Labeling)
+    print('Running WhiteboxTools Clump to generate unique, sequential IDs...')
+    start_time = time.time()
+    wbt = whitebox.WhiteboxTools()
+    wbt.set_verbose_mode(False)  # Keeps console output clean
+    wbt.clump(
+        i=merged_intermediate,
+        output=clumped_intermediate,
+        diag=False,  # Matches GEE's 4-way connectivity
+        zero_back=True  # Ignores background pixels
+    )
+    end_timing(start_time)
+
     # Prepare output profile
     area_raster = rasterio.open(area_input)
     output_profile = area_raster.profile.copy()
@@ -93,16 +115,12 @@ if not os.path.exists(merged_intermediate):
     })
 
     # Prepare raster data
-    segment_raster = rasterio.open(merged_vrt)
-
-    # Prepare global variables for sequential ID mapping
-    global_id_map = {}
-    next_id = 1
+    segment_raster = rasterio.open(clumped_intermediate)
 
     # Post-process segments
     print(f'Merging image datasets...')
     start_time = time.time()
-    with rasterio.open(merged_intermediate, 'w', **output_profile) as dst:
+    with rasterio.open(masked_intermediate, 'w', **output_profile) as dst:
         # Find number of raster blocks
         window_list = []
         for block_index, window in area_raster.block_windows(1):
@@ -115,34 +133,15 @@ if not os.path.exists(merged_intermediate):
             area_block = area_raster.read(1, window=window, masked=False)
             segment_block = segment_raster.read(1, window=window, masked=False)
 
+            # Mask out background 0s assigned by WBT clump and any NaNs
+            invalid_mask = (segment_block == 0) | (np.isnan(segment_block))
+            out_block = np.where(invalid_mask, nodata_value, segment_block)
+
             # Enforce study area boundary
-            out_block = np.where(area_block == 1, segment_block, nodata_value)
+            out_block = np.where(area_block == 1, out_block, nodata_value)
 
-            # Isolate valid pixels for ID reassignment
-            valid_mask = out_block != nodata_value
-            valid_pixels = out_block[valid_mask]
-
-            # Re-map segment numerical ids
-            if valid_pixels.size > 0:
-                # Find all unique IDs in this block
-                unique_ids = np.unique(valid_pixels)
-
-                # Register new ids not overlapping previous blocks
-                for uid in unique_ids:
-                    if uid not in global_id_map:
-                        global_id_map[uid] = next_id
-                        next_id += 1
-
-                # Assign the new ids to the segments
-                sorted_unique = np.sort(unique_ids)
-                new_id = np.array([global_id_map[uid] for uid in sorted_unique], dtype=np.int32)
-                id_index = np.searchsorted(sorted_unique, valid_pixels)
-
-                # Apply new mapped values back into the block
-                out_block[valid_mask] = new_id[id_index]
-
-                # Write single-band output
-                dst.write(out_block.astype(np.int32), 1, window=window)
+            # Write single-band output
+            dst.write(out_block.astype(np.int32), 1, window=window)
 
             # Report progress
             count, progress = raster_block_progress(100, len(window_list), count, progress)
@@ -172,7 +171,7 @@ cog_options = gdal.TranslateOptions(
 # Translate raster to cloud-optimized geotiff
 print('Converting to cloud-optimized geotiff...')
 start_time = time.time()
-cog_data = gdal.Translate(segment_output, merged_intermediate, options=cog_options)
+cog_data = gdal.Translate(segment_output, masked_intermediate, options=cog_options)
 cog_data = None
 end_timing(start_time)
 

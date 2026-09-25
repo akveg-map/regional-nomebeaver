@@ -47,7 +47,7 @@ proj_info = composite_2m.projection().getInfo()
 crs = proj_info['crs']
 transform = proj_info['transform']
 
-# Select bands for 04_segmentation
+# Select bands for segmentation
 input_image = composite_2m.select(
     ['B0', 'B1', 'B2', 'B3'],
     ['blue', 'green', 'red', 'nir']
@@ -63,7 +63,7 @@ gaussian_kernel = ee.Kernel.gaussian(
 )
 smoothed_image = input_image.convolve(gaussian_kernel)
 
-# Calculate NDVI and create 04_segmentation base image
+# Calculate NDVI and create segmentation base image
 ndvi_image = smoothed_image.normalizedDifference(['nir', 'red']).rename('ndvi')
 segmentation_image = smoothed_image.toFloat().divide(255).addBands(ndvi_image)
 
@@ -71,7 +71,7 @@ segmentation_image = smoothed_image.toFloat().divide(255).addBands(ndvi_image)
 ####____________________________________________________
 
 # Calculate initial clusters using simple non-iterative clustering
-print('Running SNIC 04_segmentation and merging operations...')
+print('Running SNIC segmentation and merging operations...')
 segments = ee.Algorithms.Image.Segmentation.SNIC(
     image=segmentation_image,
     size=10,
@@ -85,13 +85,6 @@ clusters = segments.select('clusters')
 clusters = merge_spectral(clusters, segmentation_image, 0.005)
 clusters = merge_spectral(clusters, segmentation_image, 0.005)
 clusters = merge_size(clusters, 5)
-
-# Enforce globally unique IDs for non-adjacent segments
-print('Enforcing unique IDs for spatially non-adjacent segments...')
-clusters = clusters.connectedComponents(
-    connectedness=ee.Kernel.plus(1), # 4-way connectedness
-    maxSize=1024 # Buffer size for maximum pixel count per segment
-).select('labels').toDouble().rename('clusters')
 
 #### EXPORT RESULTS
 ####____________________________________________________
