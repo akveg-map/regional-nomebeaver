@@ -2,7 +2,7 @@
 # ---------------------------------------------------------------------------
 # Create image segments
 # Author: Dan Wexler, Matt Macander, Timm Nawrocki
-# Last Updated: 2026-08-29
+# Last Updated: 2026-10-15
 # Usage: Must be executed in a Python 3.11+ installation with GDAL 3.9+.
 # Description: 'Create image segments' calculates image segments and then iteratively merges adjacent segments with similar spectral properties.
 # ---------------------------------------------------------------------------
@@ -16,8 +16,7 @@ from akutils import *
 
 # Define paths
 ee_project = 'akveg-map'
-storage_bucket = 'akveg-data'
-storage_prefix = 'regional_nomebeaver'
+storage_bucket = 'regional-nomebeaver'
 
 # Authenticate with Earth Engine
 print('Requesting information from server...')
@@ -25,8 +24,8 @@ ee.Authenticate()
 ee.Initialize(project=ee_project)
 
 # Define inputs and outputs
-image_input = f'gs://{storage_bucket}/{storage_prefix}/imagery/composite_2m_3338.tif'
-region_input = f'projects/{ee_project}/assets/study_areas/NomeBeaver_MapDomain_3338'
+image_input = f'gs://{storage_bucket}/imagery/composite_2m_3338.tif'
+region_input = f'projects/{ee_project}/assets/study_areas/nomebeaver_domain_3338'
 
 # Set target resolution
 scale = 2
@@ -94,7 +93,7 @@ task = ee.batch.Export.image.toCloudStorage(
     image=clusters,
     description='Nome-Beaver Segments',
     bucket=storage_bucket,
-    fileNamePrefix=f'{storage_prefix}/segments/export/segments_2m_3338',
+    fileNamePrefix='segment_data/export/segments_2m_3338',
     region=region_geometry,
     scale=scale,
     crs=crs,

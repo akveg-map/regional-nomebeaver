@@ -2,7 +2,7 @@
 # ---------------------------------------------------------------------------
 # Create domain raster
 # Author: Timm Nawrocki
-# Last Updated: 2026-08-18
+# Last Updated: 2026-10-15
 # Usage: Must be executed in a Python 3.12+ installation.
 # Description: 'Create domain raster' creates a raster to define the valid data area and grid alignment of the map domain. This script requires the manual creation of a map domain polygon feature class as a prerequisite.
 # ---------------------------------------------------------------------------
@@ -26,17 +26,17 @@ drive = 'C:/'
 root_folder = 'ACCS_Work'
 
 # Define folder structure
-project_folder = os.path.join(drive, root_folder, 'Projects/VegetationEcology/AKVEG_EVT_NomeBeaver/Data')
-region_folder = os.path.join(project_folder, 'Data_Input/region_data')
+project_folder = os.path.join(drive, root_folder, 'Projects/VegetationEcology/AKVEG_EVT_NomeBeaver/data')
+region_geopackage = os.path.join(project_folder, 'data_input/region_data/region_data_3338.gpkg')
 
 # Define input files
-domain_input = os.path.join(region_folder, 'NomeBeaver_MapDomain_3338.shp')
+domain_layer = 'nomebeaver_domain_3338'
 
 # Define intermediate files
-domain_intermediate = os.path.join(project_folder, 'Data_Input/NomeBeaver_MapDomain_Int_2m_3338.tif')
+domain_intermediate = os.path.join(project_folder, 'data_input/nomebeaver_domain_inter_2m_3338.tif')
 
 # Define output files
-domain_output = os.path.join(project_folder, 'Data_Input/NomeBeaver_MapDomain_2m_3338.tif')
+domain_output = os.path.join(project_folder, 'data_input/nomebeaver_domain_2m_3338.tif')
 
 # Define resolution in meters
 resolution_m = 2.0
@@ -45,7 +45,7 @@ resolution_m = 2.0
 ####____________________________________________________
 
 # Read the feature polygon and calculate bounds
-domain_data = gpd.read_file(domain_input)
+domain_data = gpd.read_file(region_geopackage, layer=domain_layer)
 xmin, ymin, xmax, ymax = domain_data.total_bounds
 
 # Snap bounds to align perfectly with the 0,0 origin
@@ -57,7 +57,7 @@ snap_ymax = math.ceil(ymax / resolution_m) * resolution_m
 # Calculate area bounds
 area_bounds = [snap_xmin, snap_ymin, snap_xmax, snap_ymax]
 
-# Set output raster options
+# Set rasterize options
 convert_options = gdal.RasterizeOptions(
     format='GTiff',
     outputType=gdal.GDT_Int8,
@@ -74,14 +74,16 @@ convert_options = gdal.RasterizeOptions(
     initValues=[-128],
     burnValues=[1],
     noData=-128,
-    allTouched=False
+    allTouched=False,
+    layers=[domain_layer]
 )
 
 # Convert the feature to raster
 if not os.path.exists(domain_intermediate):
     print('Converting feature to raster...')
     start_time = time.time()
-    gdal.Rasterize(domain_intermediate, domain_input, options=convert_options)
+    inter_data = gdal.Rasterize(domain_intermediate, region_geopackage, options=convert_options)
+    inter_data = None
     end_timing(start_time)
 
 #### EXPORT CLOUD-OPTIMIZED GEOTIFF
@@ -104,7 +106,8 @@ cog_options = gdal.TranslateOptions(
 # Translate raster to cloud-optimized geotiff
 print('Converting raster to cloud-optimized geotiff...')
 start_time = time.time()
-gdal.Translate(domain_output, domain_intermediate, options=cog_options)
+cog_data = gdal.Translate(domain_output, domain_intermediate, options=cog_options)
+cog_data = None
 end_timing(start_time)
 
 # Remove intermediate data

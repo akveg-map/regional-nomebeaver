@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 # ---------------------------------------------------------------------------
-# Combine segment exports
+# Compile canopy height
 # Author: Timm Nawrocki
-# Last Updated: 2026-09-21
-# Usage: Must be executed in a Python 3.11+ installation with GDAL 3.9+. This script requires approximately 64 GB of RAM.
-# Description: 'Combine segment exports' merges the exported tiles for the segments and converts them to cloud-optimized geotiff.
+# Last Updated: 2026-10-15
+# Usage: Must be executed in a Python 3.11+ installation with GDAL 3.9+.
+# Description: 'Compile canopy height' compiles the modeled canopy height from tiles exported through Google Earth Engine.
 # ---------------------------------------------------------------------------
 
 # Import packages
@@ -14,7 +14,6 @@ import time
 import numpy as np
 from osgeo import gdal
 import rasterio
-import whitebox
 from google.cloud import storage
 from akutils import *
 
@@ -22,7 +21,7 @@ from akutils import *
 gdal.UseExceptions()
 
 # Define no data
-nodata_value = -2147483648
+nodata_value = -32768
 
 #### SET UP DIRECTORIES, FILES, AND FIELDS
 ####____________________________________________________
@@ -31,11 +30,11 @@ nodata_value = -2147483648
 storage_client = storage.Client()
 
 # Define GCS base name
-gcs_base = 'gs://akveg-data/regional_nomebeaver'
+gcs_base = 'gs://regional-nomebeaver'
 
 # Define final GCS path for the output
-output_name = 'segments_2m_3338.tif'
-final_gcs_output = f'{gcs_base}/segments/{output_name}'
+output_name = 'canopyheight_initial_2m_3338.tif'
+final_gcs_output = f'{gcs_base}/canopy_height/{output_name}'
 
 # Set root directory
 drive = '/home'
@@ -43,36 +42,34 @@ root_folder = 'twnawrocki'
 
 # Define folder structure
 region_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/region_data')
-segment_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/segments')
+canopy_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/canopy_height')
 
 # Define input files
-area_input = os.path.join(region_folder, 'NomeBeaver_MapDomain_2m_3338.tif')
-segment_tiles = glob.glob(f'{segment_folder}/export/*.tif')
+area_input = os.path.join(region_folder, 'nomebeaver_domain_2m_3338.tif')
+canopy_tiles = glob.glob(f'{canopy_folder}/export/*.tif')
 
 # Define intermediate files
-merged_vrt = os.path.join(segment_folder, 'segments_merged.vrt')
-merged_intermediate = os.path.join(segment_folder, 'segments_merged.tif')
-clumped_intermediate = os.path.join(segment_folder, 'segments_clumped.tif')
-masked_intermediate = os.path.join(segment_folder, 'segments_masked.tif')
+merged_vrt = os.path.join(canopy_folder, 'canopy_merged.vrt')
+merged_intermediate = os.path.join(canopy_folder, 'canopy_merged.tif')
 
 # Define output files
-segment_output = os.path.join(segment_folder, output_name)
+canopy_output = os.path.join(canopy_folder, output_name)
 
 #### PROCESS MERGED RASTER
 ####____________________________________________________
 
 # Create merged raster if it does not already exist
-if not os.path.exists(masked_intermediate):
+if not os.path.exists(merged_intermediate):
 
     # Read area bounds
     area_bounds = raster_bounds(area_input)
 
-    # Merge segment tiles
-    print(f'Merging {len(segment_tiles)} tiles...')
+    # Merge canopy tiles
+    print(f'Merging {len(canopy_tiles)} tiles...')
     start_time = time.time()
     # Merge raster tiles
     vrt_data = gdal.BuildVRT(merged_vrt,
-                             segment_tiles,
+                             canopy_tiles,
                              outputSRS='EPSG:3338',
                              xRes=2,
                              yRes=2,
@@ -81,32 +78,15 @@ if not os.path.exists(masked_intermediate):
     vrt_data = None
     end_timing(start_time)
 
-    # Convert VRT to raster for WhiteboxTools
-    print('Converting VRT to GeoTIFF...')
+    # Merge canopy height datasets
+    print(f'Merging canopy height datasets...')
     start_time = time.time()
-    gdal.Translate(merged_intermediate, merged_vrt, creationOptions=['BIGTIFF=YES'])
-    end_timing(start_time)
-
-    # Run WhiteboxTools Clump (Connected Component Labeling)
-    print('Running WhiteboxTools Clump to generate unique, sequential IDs...')
-    start_time = time.time()
-    wbt = whitebox.WhiteboxTools()
-    wbt.set_verbose_mode(False)  # Keeps console output clean
-    wbt.clump(
-        i=merged_intermediate,
-        output=clumped_intermediate,
-        diag=False,  # Matches GEE's 4-way connectivity
-        zero_back=True  # Ignores background pixels
-    )
-    end_timing(start_time)
-
-    # Prepare output profile
     area_raster = rasterio.open(area_input)
     output_profile = area_raster.profile.copy()
     output_profile.update({
         'count': 1,
         'nodata': nodata_value,
-        'dtype': 'int32',
+        'dtype': 'int16',
         'compress': 'lzw',
         'bigtiff': 'YES',
         'tiled': True,
@@ -115,12 +95,11 @@ if not os.path.exists(masked_intermediate):
     })
 
     # Prepare raster data
-    segment_raster = rasterio.open(clumped_intermediate)
+    canopy_raster = rasterio.open(merged_vrt)
+    src_nodata = canopy_raster.nodata
 
-    # Post-process segments
-    print(f'Merging image datasets...')
-    start_time = time.time()
-    with rasterio.open(masked_intermediate, 'w', **output_profile) as dst:
+    # Combine and re-scale canopy height rasters
+    with rasterio.open(merged_intermediate, 'w', **output_profile) as dst:
         # Find number of raster blocks
         window_list = []
         for block_index, window in area_raster.block_windows(1):
@@ -131,24 +110,29 @@ if not os.path.exists(masked_intermediate):
         for block_index, window in area_raster.block_windows(1):
             # Read raster blocks
             area_block = area_raster.read(1, window=window, masked=False)
-            segment_block = segment_raster.read(1, window=window, masked=False)
+            canopy_block = canopy_raster.read(1, window=window, masked=False)
 
-            # Mask out background 0s assigned by WBT clump and any NaNs
-            invalid_mask = (segment_block == 0) | (np.isnan(segment_block))
-            out_block = np.where(invalid_mask, nodata_value, segment_block)
+            # Re-scale canopy height to cm
+            canopy_scaled = np.round((canopy_block/10), 0)
+
+            # Correct nodata values
+            invalid_mask = (canopy_block == 0.0) | (np.isnan(canopy_block))
+            if src_nodata is not None:
+                invalid_mask = invalid_mask | (canopy_block == src_nodata)
+            out_block = np.where(invalid_mask, nodata_value, canopy_scaled).astype(np.int16)
 
             # Enforce study area boundary
             out_block = np.where(area_block == 1, out_block, nodata_value)
 
-            # Write single-band output
-            dst.write(out_block.astype(np.int32), 1, window=window)
+            # Write output
+            dst.write(out_block, 1, window=window)
 
             # Report progress
             count, progress = raster_block_progress(100, len(window_list), count, progress)
     end_timing(start_time)
 
     # Close rasters
-    for raster in [area_raster, segment_raster]:
+    for raster in [area_raster, canopy_raster]:
         raster.close()
 
 #### EXPORT CLOUD-OPTIMIZED GEOTIFF
@@ -163,20 +147,20 @@ cog_options = gdal.TranslateOptions(
         'BLOCKSIZE=512',
         'NUM_THREADS=ALL_CPUS',
         'BIGTIFF=YES',
-        'RESAMPLING=NEAREST',
-        'OVERVIEW_RESAMPLING=NEAREST'
+        'RESAMPLING=AVERAGE',
+        'OVERVIEW_RESAMPLING=AVERAGE'
     ]
 )
 
 # Translate raster to cloud-optimized geotiff
 print('Converting to cloud-optimized geotiff...')
 start_time = time.time()
-cog_data = gdal.Translate(segment_output, masked_intermediate, options=cog_options)
+cog_data = gdal.Translate(canopy_output, merged_intermediate, options=cog_options)
 cog_data = None
 end_timing(start_time)
 
 # Upload post-processed raster to GCS
 start_time = time.time()
 print('Uploading cloud-optimized geotiff to Google Cloud...')
-upload_to_gcs(segment_output, final_gcs_output, storage_client)
+upload_to_gcs(canopy_output, final_gcs_output, storage_client)
 end_timing(start_time)

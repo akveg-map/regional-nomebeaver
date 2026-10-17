@@ -2,7 +2,7 @@
 # ---------------------------------------------------------------------------
 # Export canopy height
 # Author: Timm Nawrocki
-# Last Updated: 2026-08-28
+# Last Updated: 2026-10-15
 # Usage: Must be executed in a Python 3.11+ installation with GDAL 3.9+.
 # Description: 'Export canopy height' exports a raster map of canopy height to Google Cloud Storage. The canopy height map was created through a separate VHR pipeline repository.
 # ---------------------------------------------------------------------------
@@ -15,8 +15,7 @@ import ee
 
 # Define paths
 ee_project = 'akveg-map'
-storage_bucket = 'akveg-data'
-storage_prefix = 'regional_nomebeaver'
+storage_bucket = 'regional-nomebeaver'
 
 # Authenticate with Earth Engine
 print('Requesting information from server...')
@@ -25,7 +24,7 @@ ee.Initialize(project=ee_project)
 
 # Define inputs and outputs
 image_input = f'projects/{ee_project}/assets/reflectance_vhr/nome_beaver_chm_mosaic_00p50m'
-region_input = f'projects/{ee_project}/assets/study_areas/NomeBeaver_MapDomain_3338'
+region_input = f'projects/{ee_project}/assets/study_areas/nomebeaver_domain_3338'
 
 # Set target resolution
 scale = 2
@@ -60,7 +59,7 @@ task = ee.batch.Export.image.toCloudStorage(
     image=chm_2m,
     description='Nome-Beaver CHM',
     bucket=storage_bucket,
-    fileNamePrefix=f'{storage_prefix}/canopy_height/composite_chm_2m_3338',
+    fileNamePrefix='canopy_height/export/composite_chm_2m_3338',
     region=region_geometry,
     scale=scale,
     crs=crs,

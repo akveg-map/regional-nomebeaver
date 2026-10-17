@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # Download image tiles
 # Author: Timm Nawrocki, Alaska Center for Conservation Science
-# Last Updated: 2026-08-20
+# Last Updated: 2026-10-15
 # Usage: Must be executed in a Python 3.12+ installation.
 # Description: 'Download image tiles' downloads individual tiles from the Vantor Vivid 2023 composite based on spatial match with a pre-configured set of download grids.
 # ---------------------------------------------------------------------------
@@ -24,7 +24,7 @@ from akutils import *
 storage_client = storage.Client()
 
 # Define GCS base name
-gcs_base = 'gs://akveg-data/regional_nomebeaver'
+gcs_base = 'gs://regional-nomebeaver'
 
 # Set root directory
 drive = '/home'
@@ -33,9 +33,10 @@ root_folder = 'twnawrocki'
 # Define folder structure
 input_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/region_data')
 output_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/imagery/tiles')
+region_geopackage = os.path.join(input_folder, 'region_data_3338.gpkg')
 
-# Define input file
-grid_input = os.path.join(input_folder, 'NomeBeaver_001_Tiles_3338.shp')
+# Define input files
+grid_layer = 'tiles_001_3338'
 
 # Set desired output resolution in meters
 resolution_m = 2.0
@@ -48,7 +49,7 @@ export_url = f'{base_url}/exportImage'
 ####____________________________________________________
 
 # Load the grid shapefile
-grid_data = gpd.read_file(grid_input)
+grid_data = gpd.read_file(region_geopackage, layer=grid_layer)
 grid_count = len(grid_data)
 print(f'Found {grid_count} grid cells to process.')
 

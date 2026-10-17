@@ -2,7 +2,7 @@
 # ---------------------------------------------------------------------------
 # Convert image selector
 # Author: Timm Nawrocki
-# Last Updated: 2026-08-29
+# Last Updated: 2026-10-15
 # Usage: Must be executed in a Python 3.12+ installation.
 # Description: 'Convert image selector' converts a manually delineated image selector polygon feature class to raster, where values of 1 indicate selection of the Vivid 2023 composite and values of 2 indicate selection of the custom composite imagery.
 # ---------------------------------------------------------------------------
@@ -24,14 +24,15 @@ gdal.UseExceptions()
 
 # Set root directory
 drive = 'C:/'
-root_folder = 'ACCS_Work/Projects/VegetationEcology/AKVEG_EVT_NomeBeaver/Data'
+root_folder = 'ACCS_Work/Projects/VegetationEcology/AKVEG_EVT_NomeBeaver/data'
 
 # Define folder structure
-imagery_folder = os.path.join(drive, root_folder, 'Data_Input/imagery')
+imagery_folder = os.path.join(drive, root_folder, 'data_input/imagery')
+omission_geopackage = os.path.join(imagery_folder, 'vivid2023_omission_3338.gpkg')
 
 # Define input files
-area_input = os.path.join(drive, root_folder, 'Data_Input/NomeBeaver_MapDomain_2m_3338.tif')
-select_input = os.path.join(imagery_folder, 'vivid2023_omission_3338.shp')
+area_input = os.path.join(drive, root_folder, 'data_input/nomebeaver_domain_2m_3338.tif')
+select_layer = 'vivid2023_omission_3338'
 
 # Define intermediate files
 select_intermediate = os.path.join(imagery_folder, 'vivid2023_omission_inter_2m_3338.tif')
@@ -56,19 +57,22 @@ convert_options = gdal.RasterizeOptions(
         'NUM_THREADS=ALL_CPUS'
     ],
     outputBounds=area_bounds,
+    outputSRS='EPSG:3338',
     xRes=2,
     yRes=2,
     initValues=[1],
     burnValues=[2],
     noData= nodata_value,
-    allTouched=False
+    allTouched=False,
+    layers=[select_layer]
 )
 
 # Convert the selector polygons to raster
 if not os.path.exists(select_intermediate):
     print('Converting range to raster...')
     start_time = time.time()
-    gdal.Rasterize(select_intermediate, select_input, options=convert_options)
+    inter_data = gdal.Rasterize(select_intermediate, omission_geopackage, options=convert_options)
+    inter_data = None
     end_timing(start_time)
 
 # Set translation options for GDAL COG driver
@@ -88,7 +92,8 @@ cog_options = gdal.TranslateOptions(
 # Translate raster to cloud-optimized geotiff
 print('Converting raster to cloud-optimized geotiff...')
 start_time = time.time()
-gdal.Translate(select_output, select_intermediate, options=cog_options)
+cog_data = gdal.Translate(select_output, select_intermediate, options=cog_options)
+cog_data = None
 end_timing(start_time)
 
 # Remove intermediate file

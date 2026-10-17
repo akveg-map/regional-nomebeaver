@@ -1,5 +1,5 @@
 """
-description: runs SNIC 04_segmentation with user-chosen parameters
+description: runs SNIC 02_segmentation with user-chosen parameters
 authors: dwexler, mmacander
 date: 2026/02/24
 """
@@ -58,7 +58,7 @@ def merge_size(clusters, threshold):
     return filled.rename('clusters')
 
 def run_segmentation(image, kernel_size, snic_size):
-    """Main function for SNIC 04_segmentation and post-processing."""
+    """Main function for SNIC 02_segmentation and post-processing."""
     # rename input bands
     raw = image.select(['blue', 'green', 'red', 'nir'])
     # add NDVI band
@@ -73,7 +73,7 @@ def run_segmentation(image, kernel_size, snic_size):
             units='pixels', 
             normalize=True)
         image_for_snic = raw.convolve(kernel)
-    # perform SNIC 04_segmentation
+    # perform SNIC 02_segmentation
     snic = ee.Algorithms.Image.Segmentation.SNIC(
         image=image_for_snic,
         size=snic_size,
@@ -109,7 +109,7 @@ if __name__ == "__main__":
     # loop through kernel and SNIC parameters
     for k in KERNEL_SIZES:
         for s in SNIC_SIZES:
-            # run 04_segmentation and name output
+            # run 02_segmentation and name output
             segmented = run_segmentation(raw_image, k, s)
             params = f"kernel_{k:02d}_size_{s:02d}"
             

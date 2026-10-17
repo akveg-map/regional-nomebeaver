@@ -18,5 +18,5 @@ segmentation/       SNIC segmentation scripts and implementation plan for VHR st
 | Component | Status                                              |
 |-----------|-----------------------------------------------------|
 | VHR reflectance (Steps 200–230) | Complete — 20 strips                                |
-| SNIC segmentation | Pending — see `04_segmentation/`                     |
+| SNIC segmentation | Pending — see `02_segmentation`                     |
 | Floodplain synopsis | Draft in akveg-map/surficial-floodplains `writeup/` |

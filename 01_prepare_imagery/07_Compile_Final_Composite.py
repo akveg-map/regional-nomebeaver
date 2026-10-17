@@ -2,7 +2,7 @@
 # ---------------------------------------------------------------------------
 # Compile final image composite
 # Author: Timm Nawrocki
-# Last Updated: 2026-08-29
+# Last Updated: 2026-10-15
 # Usage: Must be executed in a Python 3.11+ installation with GDAL 3.9+.
 # Description: 'Compile final image composite' compiles the Vivid 2023 and custom composite images using the image selection raster to inform which data to retain.
 # ---------------------------------------------------------------------------
@@ -20,7 +20,7 @@ from akutils import *
 # Configure GDAL
 gdal.UseExceptions()
 
-# Define no data
+# Define nodata value
 nodata_value = -32768
 
 #### SET UP DIRECTORIES, FILES, AND FIELDS
@@ -30,7 +30,7 @@ nodata_value = -32768
 storage_client = storage.Client()
 
 # Define GCS base name
-gcs_base = 'gs://akveg-data/regional_nomebeaver'
+gcs_base = 'gs://regional-nomebeaver'
 
 # Define final GCS path for the output
 output_name = 'composite_2m_3338.tif'
@@ -45,7 +45,7 @@ region_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/region_dat
 imagery_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/imagery')
 
 # Define input files
-area_input = os.path.join(region_folder, 'NomeBeaver_MapDomain_2m_3338.tif')
+area_input = os.path.join(region_folder, 'nomebeaver_domain_2m_3338.tif')
 select_input = os.path.join(imagery_folder, 'vivid2023_omission_2m_3338.tif')
 vivid_input = os.path.join(imagery_folder, 'vivid2023_2m_3338.tif')
 custom_tiles = glob.glob(f'{imagery_folder}/export/*.tif')

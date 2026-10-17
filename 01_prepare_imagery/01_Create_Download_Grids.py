@@ -2,7 +2,7 @@
 # ---------------------------------------------------------------------------
 # Create download grids
 # Author: Timm Nawrocki
-# Last Updated: 2026-08-18
+# Last Updated: 2026-10-15
 # Usage: Must be executed in a Python 3.12+ installation.
 # Description: 'Create download grids' creates 1 km grids covering the map domain that are sized appropriately for server requests for the imagery download step.
 # ---------------------------------------------------------------------------
@@ -23,20 +23,20 @@ drive = 'C:/'
 root_folder = 'ACCS_Work'
 
 # Define folder structure
-project_folder = os.path.join(drive, root_folder, 'Projects/VegetationEcology/AKVEG_EVT_NomeBeaver/Data')
-region_folder = os.path.join(project_folder, 'Data_Input/region_data')
+project_folder = os.path.join(drive, root_folder, 'Projects/VegetationEcology/AKVEG_EVT_NomeBeaver/data')
+region_geopackage = os.path.join(project_folder, 'data_input/region_data/region_data_3338.gpkg')
 
 # Define input files
-domain_input = os.path.join(region_folder, 'NomeBeaver_MapDomain_3338.shp')
+domain_layer = 'nomebeaver_domain_3338'
 
 # Define output files
-grid_output = os.path.join(region_folder, 'NomeBeaver_001_Tiles_3338.shp')
+grid_layer = 'tiles_001_3338'
 
 # Define grid size in meters
 dimension_m = 1000
 
 # Define the fields to retain in the final outputs
-export_fields = ['grid_code', 'shape_leng', 'shape_area', 'geometry']
+export_fields = ['grid_code', 'shape_length', 'shape_area', 'geometry']
 
 #### GENERATE GRIDS
 ####____________________________________________________
@@ -44,7 +44,7 @@ export_fields = ['grid_code', 'shape_leng', 'shape_area', 'geometry']
 # Read the map domain
 print(f'Creating grids...')
 start_time = time.time()
-domain_data = gpd.read_file(domain_input)
+domain_data = gpd.read_file(region_geopackage, layer=domain_layer)
 crs_3338 = domain_data.crs
 
 # Get bounding box of the domain
@@ -84,24 +84,21 @@ for col in range(num_cols):
             'geometry': grid_poly
         })
 
-# Convert records to a GeoDataFrame
+# Convert records to a geodataframe
 grid_data = gpd.GeoDataFrame(grid_records, crs=crs_3338)
 
-# Perform spatial join to retain ONLY grids that intersect the map domain
-print(f'Filtering grids to intersect with map domain...')
+# Perform spatial join to retain grids that intersect the map domain
+print('Filtering grids to intersect with map domain...')
 grid_data = gpd.sjoin(grid_data, domain_data, how='inner', predicate='intersects')
 
-# Drop duplicated columns resulting from the spatial join
-grid_data = grid_data.drop(columns=['index_right'])
-
 # Calculate geometric length (perimeter) and area
-grid_data['shape_leng'] = grid_data.geometry.length
+grid_data['shape_length'] = grid_data.geometry.length
 grid_data['shape_area'] = grid_data.geometry.area
 
 # Restrict fields for export
 grid_data = grid_data[export_fields]
 
-# Save selected grids to shapefile
-print(f'Saving generated grids to {os.path.basename(grid_output)}...')
-grid_data.to_file(grid_output)
+# Save selected grids to GeoPackage layer
+print(f'Exporting grids...')
+grid_data.to_file(region_geopackage, layer=grid_layer, driver='GPKG')
 end_timing(start_time)
