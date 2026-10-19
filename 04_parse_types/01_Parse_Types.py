@@ -52,8 +52,8 @@ region_folder = os.path.join(project_folder, 'data_input/region_data')
 region_geopackage = os.path.join(region_folder, 'region_data_3338.gpkg')
 segment_folder = os.path.join(project_folder, 'data_input/segment_data')
 surficial_folder = os.path.join(project_folder, 'data_output/surficial_data')
-output_folder = os.path.join(output_folder, 'data_output/veg_types')
-tile_folder = os.path.join(output_folder, 'tiles')
+output_folder = os.path.join(project_folder, 'data_output/veg_types')
+tiles_folder = os.path.join(output_folder, 'tiles')
 
 # Define input files
 area_input = os.path.join(region_folder, 'nomebeaver_domain_2m_3338.tif')
@@ -104,7 +104,7 @@ zonal_all = zonal_topo + zonal_foliar + zonal_dist + zonal_sum + zonal_ratio
 with rasterio.open(zonal_input) as src:
     raster_band_map = {desc: idx for idx, desc in enumerate(src.descriptions, start=1) if desc}
     try:
-        selected_bands = [raster_band_map[name] for name in predictor_zonal]
+        selected_bands = [raster_band_map[name] for name in zonal_all]
     except KeyError as e:
         raise KeyError(f'Requested zonal predictor {e} was not found in raster band descriptions.')
 
@@ -124,19 +124,20 @@ raster_paths = {
     'fire': fire_input,
     'burned': burned_input
 }
-# Add the selected_bands and raster_paths so that each dataset can be referenced by name
 
-# Iterate through input paths to open them into a dictionary
-raster_sources = {}
-for name, path in raster_paths.items():
-    raster_sources[name] = rasterio.open(path)
+# Open dataset connections for standalone and zonal inputs
+raster_sources = {name: rasterio.open(path) for name, path in raster_paths.items()}
+zonal_source = rasterio.open(zonal_input)
 
-# Define grid alignment from area_input
+# Read spatial transform and cell dimensions from area_input
 area_transform = raster_sources['area'].transform
 align_x = area_transform[2]
 align_y = area_transform[5]
 res_x = area_transform[0]
 res_y = abs(area_transform[4])
+
+# Read bounding bounds from domain raster
+area_bounds = raster_bounds(area_input)
 
 # Post-process each grid in grid list
 grid_count = 1
@@ -199,12 +200,21 @@ for index, row in grid_data.iterrows():
 
         # Parse types
         with rasterio.open(veg_tile, 'w', **output_profile) as dst:
-            # Load raster data
-            data = {}
-            for name, src in raster_sources.items():
-                data[name] = read_raster_block(src, window_processing)
+            # Build data dictionary for covariates
+            data = {name: read_raster_block(src, window_processing) for name, src in raster_sources.items()}
 
-            # Initialize empty arrays for the vegetation types
+            # Populate data dictionary with zonal statistics bands
+            for var_name, band_idx in zonal_band_dict.items():
+                data[var_name] = read_raster_block(zonal_source, window_processing, band_idx)
+
+            # Map aliases expected by programmatic key
+            data['decratio'] = data['deciduous_ratio']
+            data['tussock'] = data['tussock_ratio']
+            data['picratio'] = data['picea_ratio']
+            data['tree'] = data['trees']
+            data['brotre'] = data['bettre'] + data['poptre'] + data['populbt']
+
+            # Initialize base classification array
             base_data = np.zeros_like(data['area'], dtype=np.int16)
 
             #### KEY THE LAND COVER TYPES
@@ -247,8 +257,9 @@ for index, row in grid_data.iterrows():
 
             # 5000. shrub
             base_data = np.where(
-                (((base_data == 0) & (data['shrub'] >= 20))
-                 | ((base_data == 0) & (data['shrub'] >= 12) & (data['fire'] >= 1980))),
+                (base_data == 0)
+                & ((data['shrub'] >= 20)
+                   | ((data['shrub'] >= 12) & (data['fire'] >= 1980))),
                 5000, base_data)
 
             # 6000. herbaceous
@@ -271,11 +282,6 @@ for index, row in grid_data.iterrows():
             base_data = np.where(
                 data['surficial'] == 5,
                 998, base_data)
-
-            # 999. recently burned
-            base_data = np.where(
-                (np.isin(base_data, [0, 5000, 6000])) & (data['fire'] >= 2019),
-                999, base_data)
 
             # 176. Alaska-Yukon Alpine Barren & Sparsely Vegetated
             base_data = np.where(
@@ -775,6 +781,14 @@ for index, row in grid_data.iterrows():
                 (base_data == 6003) & (data['sphagn'] < 15),
                 206, base_data)
 
+            #### APPLY CORRECTIONS
+            ####____________________________________________________
+
+            # 999. recently burned
+            base_data = np.where(
+                data['burned'] == 1,
+                999, base_data)
+
             #### POST-PROCESSING
             ####____________________________________________________
 
@@ -792,13 +806,14 @@ for index, row in grid_data.iterrows():
             # Fill no data using a categorical nibble
             print('\tFilling no data...')
             sieve_data = np.where(
-                (sieve_data == 0) | (sieve_data == 990) | (sieve_data >= 1000),
+                (sieve_data == 0) | (sieve_data >= 1000),
                 nodata_value, sieve_data)
             nibble_data = categorical_nibble(sieve_data, nodata_value)
 
             # Generalize the raster shapes with majority filter
             print('\tApplying majority filter...')
-            filter_data = apply_smoothing_filter(nibble_data, window_size=3, iterations=2)
+            filter_data = apply_smoothing_filter(nibble_data, window_size=5, iterations=1)
+            filter_data = apply_smoothing_filter(filter_data, window_size=3, iterations=2)
 
             # Apply sieve
             print('\tApplying size threshold...')

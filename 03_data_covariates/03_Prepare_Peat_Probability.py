@@ -2,7 +2,7 @@
 # ---------------------------------------------------------------------------
 # Calculate peat probability
 # Author: Timm Nawrocki
-# Last Updated: 2026-10-18
+# Last Updated: 2026-10-19
 # Usage: Must be executed in a Python 3.12+ installation.
 # Description: "Calculate peat probability" calculates the peat probability (dataset from Alaska Soils Data Bank) as segment zonal means.
 # ---------------------------------------------------------------------------
@@ -36,7 +36,7 @@ gcs_base = 'gs://regional-nomebeaver'
 
 # Define final GCS path for the output
 output_name = 'peat_probability_2m_3338.tif'
-final_gcs_output = f'{gcs_base}/veg_types/{output_name}'
+final_gcs_output = f'{gcs_base}/covariate_data/{output_name}'
 
 # Set root directory
 drive = 'C:/'
@@ -47,7 +47,7 @@ project_folder = os.path.join(drive, root_folder, 'Projects/VegetationEcology/AK
 segment_folder = os.path.join(project_folder, 'data_input/segment_data')
 soil_folder = os.path.join(drive, root_folder,
                            'Projects/VegetationEcology/AKSDB/Data/Data_Output/rasters_final/version_20260415')
-output_folder = os.path.join(project_folder, 'data_output/veg_types')
+output_folder = os.path.join(project_folder, 'data_input/covariate_data')
 
 # Define input files
 segment_input = os.path.join(segment_folder, 'segments_2m_3338.tif')
@@ -67,11 +67,22 @@ print('Identifying segment raster for maximum ID...')
 start_time = time.time()
 max_seg_id = 0
 with rasterio.open(segment_input) as segment_raster:
+    # Identify segment no data value
+    segment_nodata = segment_raster.nodata if segment_raster.nodata is not None else 0
+    # Calculate maximum segment ID across blocks
     for block_index, window in segment_raster.block_windows(1):
+        # Read segment data
         segment_data = segment_raster.read(1, window=window)
-        block_max = int(np.max(segment_data))
-        if block_max > max_seg_id:
-            max_seg_id = block_max
+        # Identify valid data
+        valid_mask = segment_data > 0
+        if segment_nodata is not None and segment_nodata != 0:
+            valid_mask &= (segment_data != segment_nodata)
+        # Process valid data for maximum segment ID
+        valid_segs = segment_data[valid_mask]
+        if valid_segs.size > 0:
+            block_max = int(np.max(valid_segs))
+            if block_max > max_seg_id:
+                max_seg_id = block_max
 end_timing(start_time)
 
 # Initialize 1D accumulation arrays
@@ -88,9 +99,6 @@ with rasterio.open(segment_input) as segment_raster, rasterio.open(peat_input) a
     # Establish raster count
     count = 1
     progress = 0
-
-    # Identify nodata value
-    segment_nodata = segment_raster.nodata if segment_raster.nodata is not None else 0
 
     # Calculate zonal statistics for each block in the segment raster
     for block_index, window in segment_raster.block_windows(1):
@@ -110,9 +118,9 @@ with rasterio.open(segment_input) as segment_raster, rasterio.open(peat_input) a
             resampling=Resampling.bilinear
         ).astype(np.int16)
 
-        # Define valid data mask
+        # Identify valid data
         valid_mask = (segment_data > 0) & (peat_data != src_nodata)
-        if segment_nodata is not None and segment_nodata != 0:
+        if segment_nodata != 0:
             valid_mask &= (segment_data != segment_nodata)
 
         # Restrict block data to valid data mask
@@ -134,7 +142,7 @@ print('Calculating zonal means...')
 start_time = time.time()
 with np.errstate(divide='ignore', invalid='ignore'):
     means = sum_array / count_array
-means = np.nan_to_num(means, nan=dst_nodata)
+means = np.nan_to_num(means, nan=dst_nodata, posinf=dst_nodata, neginf=dst_nodata)
 mean_array = np.round(means).astype(np.int16)
 end_timing(start_time)
 
@@ -180,14 +188,14 @@ with rasterio.open(segment_input) as segment_raster:
             # Read segment data
             segment_data = segment_raster.read(1, window=window)
 
-            # Map invalid segment IDs to 0 safely for 1D array index lookup
-            safe_segment_data = np.where(segment_data > 0, segment_data, 0)
-            out_data = mean_array[safe_segment_data]
-
-            # Define valid mask
+            # Identify valid data
             valid_mask = (segment_data > 0)
-            if segment_nodata is not None and segment_nodata != 0:
+            if segment_nodata != 0:
                 valid_mask &= (segment_data != segment_nodata)
+
+            # Map invalid segment IDs to 0 safely for 1D array index lookup
+            safe_segment_data = np.where(valid_mask, segment_data, 0)
+            out_data = mean_array[safe_segment_data]
 
             # Mask out invalid cells
             out_data = np.where(valid_mask, out_data, dst_nodata)

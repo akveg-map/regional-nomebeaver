@@ -2,7 +2,7 @@
 # ---------------------------------------------------------------------------
 # Summarize most recent fire year
 # Author: Timm Nawrocki
-# Last Updated: 2026-10-18
+# Last Updated: 2026-10-19
 # Usage: Must be executed in a Python 3.12+ installation.
 # Description: "Summarize most recent fire year" summarizes the per segment zonal majority for most recent fire year.
 # ---------------------------------------------------------------------------
@@ -35,7 +35,7 @@ gcs_base = 'gs://regional-nomebeaver'
 
 # Define final GCS path for the output
 output_name = 'fire_year_2m_3338.tif'
-final_gcs_output = f'{gcs_base}/veg_types/{output_name}'
+final_gcs_output = f'{gcs_base}/covariate_data/{output_name}'
 
 # Set root directory
 drive = 'C:/'
@@ -50,7 +50,7 @@ segment_folder = os.path.join(project_folder, 'data_input/segment_data')
 ancillary_folder = os.path.join(
     drive, root_folder,
     'Projects/VegetationEcology/AKVEG_Map/Data/Data_Input/ancillary_data/processed')
-output_folder = os.path.join(project_folder, 'data_output/veg_types')
+output_folder = os.path.join(project_folder, 'data_input/covariate_data')
 
 # Define input files
 area_input = os.path.join(region_folder, 'nomebeaver_domain_2m_3338.tif')
@@ -188,20 +188,17 @@ start_time = time.time()
 max_seg_id = 0
 with rasterio.open(segment_input) as segment_raster:
     # Identify segment no data value
-    segment_nodata = segment_raster.nodata
-
+    segment_nodata = segment_raster.nodata if segment_raster.nodata is not None else 0
     # Calculate maximum segment ID across blocks
     for block_index, window in segment_raster.block_windows(1):
         # Read segment data
         segment_data = segment_raster.read(1, window=window)
-
         # Identify valid data
-        valid_seg_mask = segment_data > 0
+        valid_mask = segment_data > 0
         if segment_nodata is not None and segment_nodata != 0:
-            valid_seg_mask &= (segment_data != segment_nodata)
-
+            valid_mask &= (segment_data != segment_nodata)
         # Process valid data for maximum segment ID
-        valid_segs = segment_data[valid_seg_mask]
+        valid_segs = segment_data[valid_mask]
         if valid_segs.size > 0:
             block_max = int(np.max(valid_segs))
             if block_max > max_seg_id:
@@ -278,9 +275,9 @@ with (rasterio.open(segment_input) as segment_raster,
             fill_value=fire_nodata
         ).astype(np.int16)
 
-        # Define valid data mask
-        valid_mask = (segment_data > 0) & (fire_data != nodata_value) & (fire_data != fire_nodata)
-        if segment_nodata is not None and segment_nodata != 0:
+        # Identify valid data
+        valid_mask = (segment_data > 0) & (fire_data != nodata_value)
+        if segment_nodata != 0:
             valid_mask &= (segment_data != segment_nodata)
 
         # Restrict block data to valid data mask
@@ -350,9 +347,9 @@ with rasterio.open(segment_input) as segment_raster:
             # Read segment data
             segment_data = segment_raster.read(1, window=window)
 
-            # Prepare valid data mask
+            # Identify valid data
             valid_mask = (segment_data > 0)
-            if segment_nodata is not None and segment_nodata != 0:
+            if segment_nodata != 0:
                 valid_mask &= (segment_data != segment_nodata)
 
             # Map invalid segment IDs to 0 safely for 1D array index lookup

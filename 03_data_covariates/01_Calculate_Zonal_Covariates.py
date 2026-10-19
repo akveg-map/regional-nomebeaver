@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 # ---------------------------------------------------------------------------
-# Calculate zonal statistics
+# Calculate zonal covariates
 # Author: Timm Nawrocki
-# Last Updated: 2026-10-15
+# Last Updated: 2026-10-19
 # Usage: Must be executed in a Python 3.12+ installation.
-# Description: "Calculate zonal statistics" reads cloud-optimized geotiffs from Google Cloud Storage to calculate per segment zonal statistics for 4-band VHR imagery, multi-seasonal Sentinel-1/2, topographic, hydrographic, and foliar cover covariates.
+# Description: "Calculate zonal covariates" reads cloud-optimized geotiffs from Google Cloud Storage to calculate per segment zonal mean statistics for 4-band VHR imagery, multi-seasonal Sentinel-1/2, topographic, and hydrographic covariates for use in model training and prediction.
 # ---------------------------------------------------------------------------
 
 # Set environment
@@ -37,8 +37,8 @@ storage_client = storage.Client()
 gcs_base = 'gs://regional-nomebeaver'
 
 # Define final GCS path for the output
-output_name = 'zonal_stats_2m_3338.tif'
-final_gcs_output = f'{gcs_base}/segment_data/{output_name}'
+output_name = 'covariates_zonal_2m_3338.tif'
+final_gcs_output = f'{gcs_base}/covariate_data/{output_name}'
 
 # Set root directory
 drive = '/home'
@@ -47,6 +47,7 @@ root_folder = 'twnawrocki'
 # Define folder structure
 vrt_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/vrt_data')
 segment_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/segment_data')
+output_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/covariate_data')
 
 # Define input files
 segment_input = os.path.join(segment_folder, 'segments_2m_3338.tif')
@@ -55,12 +56,10 @@ segment_input = os.path.join(segment_folder, 'segments_2m_3338.tif')
 s1_seasonal_vrt = os.path.join(vrt_folder, 's1_seasonal.vrt')
 s2_seasonal_vrt = os.path.join(vrt_folder, 's2_seasonal.vrt')
 s2_median_vrt = os.path.join(vrt_folder, 's2_median.vrt')
-
-# Define intermediate files
-zonal_intermediate = os.path.join(segment_folder, 'zonal_stats_int_2m_3338.tif')
+zonal_intermediate = os.path.join(output_folder, 'zonal_stats_inter_2m_3338.tif')
 
 # Define output files
-zonal_output = os.path.join(segment_folder, output_name)
+zonal_output = os.path.join(output_folder, output_name)
 
 # Define covariate sets
 predictor_topo = ['coast', 'stream', 'river', 'wetness',
@@ -73,25 +72,13 @@ predictor_s2 = [f's2_{i}_{band}' for i in range(1, 6) for band in
                 ['blue', 'green', 'red', 'redge1', 'redge2', 'redge3', 'nir',
                  'redge4', 'swir1', 'swir2', 'nbr', 'ngrdi', 'ndmi', 'ndsi',
                  'ndvi', 'ndwi']]
-predictor_foliar = ['alnus', 'betshr', 'bettre', 'dryas', 'dsalix',
-                    'empnig', 'erivag', 'feather', 'forb', 'gramin',
-                    'lichen', 'mwcalama', 'ndsalix', 'neetre', 'nerishr',
-                    'picgla', 'picmar', 'poptre', 'populbt', 'rhoshr',
-                    'sphagn', 'vaculi', 'vacvit', 'wetforb', 'wetsed']
-predictor_dist = ['bromos', 'wetgram']
-predictor_sum = ['eridwarf', 'erishrub', 'herbac', 'ndshrub', 'shrub', 'trees', 'wetind']
-predictor_ratio = ['deciduous_ratio', 'picea_ratio', 'tussock_ratio']
 
 # Dynamically build predictor_all list from input arguments
-predictor_names = ['topo', 's1', 's2', 'foliar', 'dist', 'sum', 'ratio']
+predictor_names = ['topo', 's1', 's2']
 predictor_map = {
     'topo': predictor_topo,
     's1': predictor_s1,
-    's2': predictor_s2,
-    'foliar': predictor_foliar,
-    'dist': predictor_dist,
-    'sum': predictor_sum,
-    'ratio': predictor_ratio
+    's2': predictor_s2
 }
 predictor_all = []
 for name in predictor_names:
@@ -133,26 +120,6 @@ s1_paths = get_vsi_paths('akveg-data', 's1_2022_v20230326/', storage_client)
 s2_seasonal_paths = get_vsi_paths('akveg-data', 's2_sr_2019_2023_gMedian_v20240713d/', storage_client)
 s2_median_paths = get_vsi_paths('akveg-data', 's2_sr_2019_2023_median_v20240724/', storage_client)
 
-# Define raster paths for foliar covariates
-foliar_sources = {}
-for name in predictor_foliar:
-    foliar_sources[name] = f'/vsigs/akveg-data/foliar_cover_v2p1/rasters_final/{name}_cvr_10m_3338.tif'
-
-# Define raster paths for distribution covariates
-dist_sources = {}
-for name in predictor_dist:
-    dist_sources[name] = f'/vsigs/akveg-data/foliar_cover_v2p1/rasters_final/{name}_dst_10m_3338.tif'
-
-# Define raster paths for sum covariates
-sum_sources = {}
-for name in predictor_sum:
-    sum_sources[name] = f'/vsigs/akveg-data/foliar_cover_v2p1/rasters_summary/{name}_cvr_10m_3338.tif'
-
-# Define raster paths for ratio covariates
-ratio_sources = {}
-for name in predictor_ratio:
-    ratio_sources[name] = f'/vsigs/akveg-data/foliar_cover_v2p1/rasters_summary/{name}_10m_3338.tif'
-
 # Create virtual raster for S1 covariates
 if not os.path.exists(s1_seasonal_vrt):
     print('Building virtual raster for S1 covariates...')
@@ -182,11 +149,22 @@ print('Identifying segment raster for maximum ID...')
 start_time = time.time()
 max_seg_id = 0
 with rasterio.open(segment_input) as segment_raster:
+    # Identify segment no data value
+    segment_nodata = segment_raster.nodata if segment_raster.nodata is not None else 0
+    # Calculate maximum segment ID across blocks
     for block_index, window in segment_raster.block_windows(1):
+        # Read segment data
         segment_data = segment_raster.read(1, window=window)
-        block_max = int(np.max(segment_data))
-        if block_max > max_seg_id:
-            max_seg_id = block_max
+        # Identify valid data
+        valid_mask = segment_data > 0
+        if segment_nodata is not None and segment_nodata != 0:
+            valid_mask &= (segment_data != segment_nodata)
+        # Process valid data for maximum segment ID
+        valid_segs = segment_data[valid_mask]
+        if valid_segs.size > 0:
+            block_max = int(np.max(valid_segs))
+            if block_max > max_seg_id:
+                max_seg_id = block_max
 end_timing(start_time)
 
 # Initialize accumulation arrays
@@ -195,11 +173,7 @@ count_arrays = {b: np.zeros(max_seg_id + 1, dtype=np.int32) for b in predictor_a
 
 # Combine all single-band sources into one lookup
 single_band_sources = {
-    **env_sources,
-    **foliar_sources,
-    **dist_sources,
-    **sum_sources,
-    **ratio_sources
+    **env_sources
 }
 
 # Calculate zonal sums and counts
@@ -214,9 +188,6 @@ with rasterio.open(segment_input) as segment_raster:
     # Establish raster count
     count = 1
     progress = 0
-
-    # Identify nodata value
-    segment_nodata = segment_raster.nodata if segment_raster.nodata is not None else 0
 
     # Retrieve metadata for S1 and S2 datasets
     with rasterio.open(s1_paths[0]) as s1_src:
@@ -272,7 +243,12 @@ with rasterio.open(segment_input) as segment_raster:
     for name, path in single_band_sources.items():
         if name in band_map:
             src_handle = rasterio.open(path)
-            vrt_handle = rasterio.vrt.WarpedVRT(src_handle, crs='EPSG:3338', resampling=Resampling.bilinear)
+            vrt_handle = rasterio.vrt.WarpedVRT(
+                src_handle,
+                crs='EPSG:3338',
+                resampling=Resampling.bilinear,
+                nodata=nodata_value
+            )
             single_band_vrts[name] = (src_handle, vrt_handle)
 
     # Open multi-band VRTs once before block loop
@@ -370,9 +346,9 @@ with rasterio.open(segment_input) as segment_raster:
                 if name in cov_data:
                     # Select block data
                     data = cov_data[name]
-                    # Define valid data mask
+                    # Identify valid data
                     valid_mask = (segment_data > 0) & (data != nodata_value)
-                    if segment_nodata is not None:
+                    if segment_nodata != 0:
                         valid_mask &= (segment_data != segment_nodata)
                     # Restrict block data to valid data mask
                     seg_valid = segment_data[valid_mask]
@@ -406,7 +382,7 @@ mean_arrays = {}
 for name in predictor_all:
     with np.errstate(divide='ignore', invalid='ignore'):
         means = sum_arrays[name] / count_arrays[name]
-    means = np.nan_to_num(means, nan=nodata_value)
+    means = np.nan_to_num(means, nan=nodata_value, posinf=nodata_value, neginf=nodata_value)
     mean_arrays[name] = np.round(means).astype(np.int16)
 end_timing(start_time)
 
@@ -451,19 +427,20 @@ with rasterio.open(segment_input) as segment_raster:
 
         # Load segment data
         for block_index, window in segment_raster.block_windows(1):
+            # Read segment data
             segment_data = segment_raster.read(1, window=window)
 
-            # Map invalid segment IDs (e.g. nodata) to 0 safely so they don't break the array index lookup
-            safe_segment_data = np.where(segment_data > 0, segment_data, 0)
+            # Identify valid data
+            valid_mask = (segment_data > 0)
+            if segment_nodata != 0:
+                valid_mask &= (segment_data != segment_nodata)
+
+            # Map invalid segment IDs (e.g. nodata) to 0
+            safe_segment_data = np.where(valid_mask, segment_data, 0)
 
             # Perform aggregation
             for name, b_idx in band_map.items():
                 out_data = mean_arrays[name][safe_segment_data]
-
-                # Define valid mask
-                valid_mask = (segment_data > 0)
-                if segment_nodata is not None:
-                    valid_mask &= (segment_data != segment_nodata)
 
                 # Limit output to valid data
                 out_data = np.where(valid_mask, out_data, nodata_value)
