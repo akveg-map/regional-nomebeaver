@@ -181,10 +181,10 @@ if not os.path.exists(s2_median_vrt):
 print('Identifying segment raster for maximum ID...')
 start_time = time.time()
 max_seg_id = 0
-with rasterio.open(segment_input) as segment_data:
-    for block_index, window in segment_data.block_windows(1):
-        seg_data = segment_data.read(1, window=window)
-        block_max = int(np.max(seg_data))
+with rasterio.open(segment_input) as segment_raster:
+    for block_index, window in segment_raster.block_windows(1):
+        segment_data = segment_raster.read(1, window=window)
+        block_max = int(np.max(segment_data))
         if block_max > max_seg_id:
             max_seg_id = block_max
 end_timing(start_time)
@@ -203,12 +203,12 @@ single_band_sources = {
 }
 
 # Calculate zonal sums and counts
-with rasterio.open(segment_input) as segment_data:
+with rasterio.open(segment_input) as segment_raster:
     start_time = time.time()
 
     # Find number of raster blocks
     window_list = []
-    for block_index, window in segment_data.block_windows(1):
+    for block_index, window in segment_raster.block_windows(1):
         window_list.append(window)
 
     # Establish raster count
@@ -216,7 +216,7 @@ with rasterio.open(segment_input) as segment_data:
     progress = 0
 
     # Identify nodata value
-    segment_nodata = segment_data.nodata if segment_data.nodata is not None else 0
+    segment_nodata = segment_raster.nodata if segment_raster.nodata is not None else 0
 
     # Retrieve metadata for S1 and S2 datasets
     with rasterio.open(s1_paths[0]) as s1_src:
@@ -283,12 +283,12 @@ with rasterio.open(segment_input) as segment_data:
     try:
         # Calculate zonal statistics for each block in the segment raster
         print('Calculating zonal sums and counts across blocks...')
-        for block_index, window in segment_data.block_windows(1):
+        for block_index, window in segment_raster.block_windows(1):
             # Read raster block
-            seg_data = segment_data.read(1, window=window)
+            segment_data = segment_raster.read(1, window=window)
 
             # Define the output profile based on master resolutions
-            left, bottom, right, top = segment_data.window_bounds(window)
+            left, bottom, right, top = segment_raster.window_bounds(window)
             dst_height, dst_width = window.height, window.width
 
             # Dictionary to hold computed chunk data before accumulating
@@ -371,11 +371,11 @@ with rasterio.open(segment_input) as segment_data:
                     # Select block data
                     data = cov_data[name]
                     # Define valid data mask
-                    valid_mask = (seg_data > 0) & (data != nodata_value)
+                    valid_mask = (segment_data > 0) & (data != nodata_value)
                     if segment_nodata is not None:
-                        valid_mask &= (seg_data != segment_nodata)
+                        valid_mask &= (segment_data != segment_nodata)
                     # Restrict block data to valid data mask
-                    seg_valid = seg_data[valid_mask]
+                    seg_valid = segment_data[valid_mask]
                     data_valid = data[valid_mask]
                     # Calculate sums and counts for blocks that contain valid data
                     if len(seg_valid) > 0:
@@ -417,12 +417,12 @@ del sum_arrays, count_arrays
 ####____________________________________________________
 
 # Merge zonal means from all blocks to output raster
-with rasterio.open(segment_input) as segment_data:
+with rasterio.open(segment_input) as segment_raster:
     print('Merging zonal blocks...')
     start_time = time.time()
 
     # Define output profile
-    output_profile = segment_data.profile.copy()
+    output_profile = segment_raster.profile.copy()
     output_profile.update({
         'count': len(predictor_all),
         'dtype': 'int16',
@@ -439,7 +439,7 @@ with rasterio.open(segment_input) as segment_data:
     with rasterio.open(zonal_intermediate, 'w', **output_profile) as dst:
         # Find number of raster blocks
         window_list = []
-        for block_index, window in segment_data.block_windows(1):
+        for block_index, window in segment_raster.block_windows(1):
             window_list.append(window)
 
         # Establish raster count
@@ -450,20 +450,20 @@ with rasterio.open(segment_input) as segment_data:
         dst.descriptions = tuple(predictor_all)
 
         # Load segment data
-        for block_index, window in segment_data.block_windows(1):
-            seg_data = segment_data.read(1, window=window)
+        for block_index, window in segment_raster.block_windows(1):
+            segment_data = segment_raster.read(1, window=window)
 
             # Map invalid segment IDs (e.g. nodata) to 0 safely so they don't break the array index lookup
-            safe_seg_data = np.where(seg_data > 0, seg_data, 0)
+            safe_segment_data = np.where(segment_data > 0, segment_data, 0)
 
             # Perform aggregation
             for name, b_idx in band_map.items():
-                out_data = mean_arrays[name][safe_seg_data]
+                out_data = mean_arrays[name][safe_segment_data]
 
                 # Define valid mask
-                valid_mask = (seg_data > 0)
+                valid_mask = (segment_data > 0)
                 if segment_nodata is not None:
-                    valid_mask &= (seg_data != segment_nodata)
+                    valid_mask &= (segment_data != segment_nodata)
 
                 # Limit output to valid data
                 out_data = np.where(valid_mask, out_data, nodata_value)
@@ -495,7 +495,7 @@ cog_options = gdal.TranslateOptions(
 )
 
 # Translate raster to cloud-optimized geotiff
-print(f'Creating cloud-optimized raster using GDAL...')
+print(f'Creating cloud-optimized geotiff...')
 start_time = time.time()
 cog_ds = gdal.Translate(zonal_output, zonal_intermediate, options=cog_options)
 cog_ds = None

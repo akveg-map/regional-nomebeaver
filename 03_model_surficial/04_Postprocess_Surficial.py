@@ -172,11 +172,6 @@ grid_data = gpd.read_file(region_geopackage, layer=grid_layer)
 # Define grid list
 grid_list = grid_data['grid_code'].tolist()
 
-# Override grid list for test purposes (uncomment lines below)
-# target_grids = ['AK010H210V005', 'AK010H210V004', 'AK010H213V013', 'AK010H190V013', 'AK010H190V014',
-#                'AK010H250V017', 'AK010H250V016', 'AK010H255V016']
-# grid_list = [code for code in grid_list if code in target_grids]
-
 # Partition grid list for spatially parallel processing
 grid_chunks = np.array_split(grid_list, processors)
 grid_list = grid_chunks[processor - 1].tolist()
