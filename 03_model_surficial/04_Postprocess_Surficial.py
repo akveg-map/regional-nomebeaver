@@ -2,7 +2,7 @@
 # ---------------------------------------------------------------------------
 # Post-process surficial features
 # Author: Timm Nawrocki
-# Last Updated: 2026-10-15
+# Last Updated: 2026-10-22
 # Usage: Must be executed in a Python 3.12+ installation.
 # Description: "Post-process surficial features" merges modeled and manually delineated data branches and performs smoothing and filling in grid tiles.
 # ---------------------------------------------------------------------------
@@ -37,6 +37,10 @@ storage_client = storage.Client()
 
 # Define GCS base name
 gcs_base = 'gs://regional-nomebeaver'
+
+# Define final GCS path for the output
+output_name = 'surficial_2m_3338.tif'
+final_gcs_output = f'{gcs_base}/surficial_data/{output_name}'
 
 # Set root directory
 drive = 'C:/'
@@ -75,10 +79,9 @@ trail_intermediate = os.path.join(intermediate_folder, 'trail_2m_3338.tif')
 water_intermediate = os.path.join(intermediate_folder, 'water_2m_3338.tif')
 floodplain_intermediate = os.path.join(intermediate_folder, 'floodplain_2m_3338.tif')
 vrt_intermediate = os.path.join(intermediate_folder, 'surficial_inter_2m_3338.vrt')
-surficial_intermediate = os.path.join(intermediate_folder, 'surficial_inter_2m_3338.tif')
 
 # Define output files
-surficial_output = os.path.join(output_folder, 'surficial_2m_3338.tif')
+surficial_output = os.path.join(output_folder, output_name)
 
 #### PREPARE MANUAL DATA
 ####____________________________________________________
@@ -214,10 +217,9 @@ for index, row in grid_data.iterrows():
 
     # Define output paths
     surficial_tile = os.path.join(tiles_folder, f'{grid}_2m_3338.tif')
-    gcs_output = f'{gcs_base}/surficial_data/tiles/{grid}_2m_3338.tif'
 
     # Create output raster if it does not already exist in GCS
-    if not gcs_blob_exists(gcs_output, storage_client):
+    if not os.path.exists(surficial_tile):
         print(f'Post-processing {grid} ({grid_count} of {len(grid_list)})...')
         start_time = time.time()
 
@@ -326,11 +328,6 @@ for index, row in grid_data.iterrows():
 
             # Write results
             dst.write(export_data, 1)
-
-        # Upload and Clean Up
-        print('Uploading raster dataset to Google Cloud Storage...')
-        upload_to_gcs(surficial_tile, gcs_output, storage_client)
-        end_timing(start_time)
     else:
         print(f'{grid} already exists.')
 
@@ -378,4 +375,14 @@ cog_options = gdal.TranslateOptions(
 print('Converting raster to cloud-optimized geotiff...')
 cog_data = gdal.Translate(surficial_output, vrt_intermediate, options=cog_options)
 cog_data = None
+end_timing(start_time)
+
+# Remove intermediate datasets
+if os.path.exists(vrt_intermediate):
+    os.remove(vrt_intermediate)
+
+# Upload post-processed raster to GCS
+start_time = time.time()
+print('Uploading cloud-optimized geotiff to Google Cloud...')
+upload_to_gcs(surficial_output, final_gcs_output, storage_client)
 end_timing(start_time)

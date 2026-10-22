@@ -35,7 +35,7 @@ region_geopackage = os.path.join(project_folder, 'data_input/region_data/region_
 surficial_folder = os.path.join(project_folder, 'data_input/surficial_data')
 manual_geopackage = os.path.join(surficial_folder, 'surficial_training_manual_3338.gpkg')
 training_geopackage = os.path.join(surficial_folder, 'surficial_training_3338.gpkg')
-segment_folder = os.path.join(project_folder, 'data_input/segment_data')
+covariate_folder = os.path.join(project_folder, 'data_input/covariate_data')
 image_folder = os.path.join(project_folder, 'data_input/imagery')
 
 # Define input files
@@ -45,7 +45,7 @@ alpine_layer = 'surficial_training_alpine_3338'
 lowland_layer = 'surficial_training_lowland_3338'
 bare_layer = 'surficial_training_bare_3338'
 water_layer = 'surficial_training_water_3338'
-zonal_input = os.path.join(segment_folder, 'zonal_stats_2m_3338.tif')
+zonal_input = os.path.join(covariate_folder, 'covariates_zonal_2m_3338.tif')
 image_input = os.path.join(image_folder, 'composite_2m_3338.tif')
 
 # Define output files

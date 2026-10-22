@@ -35,7 +35,7 @@ storage_client = storage.Client()
 gcs_base = 'gs://regional-nomebeaver'
 
 # Define final GCS path for the output
-output_name = 'surficial_2m_3338.tif'
+output_name = 'surficial_pre_2m_3338.tif'
 final_gcs_output = f'{gcs_base}/surficial_data/{output_name}'
 
 # Set root directory
@@ -46,13 +46,13 @@ root_folder = 'twnawrocki'
 region_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/region_data')
 model_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/surficial_model')
 surficial_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/surficial_data')
-segment_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/segment_data')
+covariate_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/covariate_data')
 image_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/imagery')
 
 # Define input files
 area_input = os.path.join(region_folder, 'nomebeaver_domain_2m_3338.tif')
 classifier_input = os.path.join(model_folder, 'surficial_classifier.joblib')
-zonal_input = os.path.join(segment_folder, 'zonal_stats_2m_3338.tif')
+zonal_input = os.path.join(covariate_folder, 'covariates_zonal_2m_3338.tif')
 image_input = os.path.join(image_folder, 'composite_2m_3338.tif')
 
 # Define intermediate files
@@ -87,11 +87,8 @@ with rasterio.open(zonal_input) as src:
 
 #### RUN MODEL PREDICTION
 ####____________________________________________________
-print('Loading model and initializing prediction...')
+print('Predicting output raster...')
 start_time = time.time()
-
-# Import model
-classifier = joblib.load(classifier_input)
 
 # Prepare output profile
 area_raster = rasterio.open(area_input)
@@ -208,6 +205,10 @@ start_time = time.time()
 cog_data = gdal.Translate(surficial_output, surficial_intermediate, options=cog_options)
 cog_data = None
 end_timing(start_time)
+
+# Remove intermediate datasets
+if os.path.exists(surficial_intermediate):
+    os.remove(surficial_intermediate)
 
 # Upload post-processed raster to GCS
 start_time = time.time()
