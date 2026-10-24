@@ -28,6 +28,9 @@ nodata_value = -128
 # Set random state
 random_state = 314
 
+# Configure GDAL
+gdal.UseExceptions()
+
 #### SET UP DIRECTORIES, FILES, AND FIELDS
 ####____________________________________________________
 
@@ -47,6 +50,7 @@ root_folder = 'twnawrocki'
 
 # Define folder structure
 region_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/region_data')
+surficial_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/surficial_data')
 model_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/water_model')
 covariate_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/covariate_data')
 image_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/imagery')
@@ -59,6 +63,7 @@ classifier_input = os.path.join(model_folder, f'{group}_classifier.joblib')
 regressor_input = os.path.join(model_folder, f'{group}_regressor.joblib')
 zonal_input = os.path.join(covariate_folder, 'covariates_zonal_2m_3338.tif')
 image_input = os.path.join(image_folder, 'composite_2m_3338.tif')
+floodplain_input = os.path.join(surficial_folder, 'intermediate_data/floodplain_2m_3338.tif')
 
 # Define intermediate files
 water_intermediate = os.path.join(output_folder, 'water_inter_2m_3338.tif')
@@ -72,7 +77,7 @@ water_output = os.path.join(output_folder, output_name)
 # Load classifier
 print('Loading model and identifying features...')
 classifier = joblib.load(classifier_input)
-regressor = joblib.load(regressor_output)
+regressor = joblib.load(regressor_input)
 
 # Read threshold
 with open(threshold_input, "r") as threshold_reader:
@@ -87,13 +92,17 @@ predictor_comp = ['comp_blue', 'comp_green', 'comp_red', 'comp_nir', 'comp_ndwi'
 # Separate zonal predictors from composite predictors
 predictor_zonal = [feat for feat in model_features if feat not in predictor_comp]
 
-# Identify band indices for zonal input raster
+# Identify band indices for zonal input raster and look up slope band
 with rasterio.open(zonal_input) as src:
     raster_band_map = {desc: idx for idx, desc in enumerate(src.descriptions, start=1) if desc}
     try:
         selected_bands = [raster_band_map[name] for name in predictor_zonal]
     except KeyError as e:
         raise KeyError(f'Requested zonal predictor {e} was not found in raster band descriptions.')
+    try:
+        slope_band_idx = raster_band_map['slope']
+    except KeyError:
+        raise KeyError("Band description 'slope' was not found in the zonal covariate raster.")
 
 #### RUN MODEL PREDICTION
 ####____________________________________________________
@@ -117,6 +126,7 @@ output_profile.update({
 # Prepare raster data
 zonal_raster = rasterio.open(zonal_input)
 image_raster = rasterio.open(image_input)
+floodplain_raster = rasterio.open(floodplain_input)
 
 # Predict model results by raster block
 with rasterio.open(water_intermediate, 'w', **output_profile) as dst:
@@ -129,24 +139,28 @@ with rasterio.open(water_intermediate, 'w', **output_profile) as dst:
     for block_index, window in area_raster.block_windows(1):
         # Read study area block
         area_data = area_raster.read(1, window=window)
-        rows, cols = area_block.shape
+        rows, cols = area_data.shape
 
         # Skip prediction if block contains no valid study area pixels
-        if not np.any(area_block == 1):
+        if not np.any(area_data == 1):
             response_2d = np.full((rows, cols), nodata_value, dtype=np.int8)
             dst.write(response_2d, window=window, indexes=1)
             count, progress = raster_block_progress(100, len(window_list), count, progress)
             continue
-
+        
+        # Read slope and floodplain blocks for rule-based post-processing
+        slope_data = zonal_raster.read(slope_band_idx, window=window)
+        floodplain_data = floodplain_raster.read(1, window=window)
+        
         # Read selected zonal covariate bands (3D: bands, rows, cols)
-        zonal_block = zonal_raster.read(indexes=selected_bands, window=window)
+        zonal_data = zonal_raster.read(indexes=selected_bands, window=window)
 
         # Read image composite bands (3D: bands, rows, cols)
-        image_block = image_raster.read(window=window)
-        comp_blue = image_block[0]
-        comp_green = image_block[1]
-        comp_red = image_block[2]
-        comp_nir = image_block[3]
+        image_data = image_raster.read(window=window)
+        comp_blue = image_data[0]
+        comp_green = image_data[1]
+        comp_red = image_data[2]
+        comp_nir = image_data[3]
 
         # Calculate normalized difference indices
         comp_ndwi = calc_normalized_index(comp_green, comp_nir)
@@ -154,7 +168,7 @@ with rasterio.open(water_intermediate, 'w', **output_profile) as dst:
 
         # Reshape spatial blocks into 2D tabular features (pixels, features)
         n_pixels = rows * cols
-        zonal_2d = zonal_block.reshape(len(selected_bands), n_pixels).T
+        zonal_2d = zonal_data.reshape(len(selected_bands), n_pixels).T
         image_2d = np.column_stack([
             comp_blue.ravel(),
             comp_green.ravel(),
@@ -183,11 +197,14 @@ with rasterio.open(water_intermediate, 'w', **output_profile) as dst:
         # Reshape 1D prediction back to 2D spatial block
         response_2d = np.round(response_output, 0).reshape(rows, cols).astype(np.int8)
 
+        # Set rule-based zeros
+        response_2d = np.where((floodplain_data != 1) | (slope_data >= 10), 0, response_2d)
+
         # Extract to study area
-        response_2d = np.where(area_data == 1, response_2d.astype('int8'), nodata_value)
+        response_2d = np.where(area_data == 1, response_2d, nodata_value)
 
         # Write results
-        dst.write(response_2d, window=window, indexes=1)
+        dst.write(response_2d.astype('int8'), window=window, indexes=1)
 
         # Report progress
         count, progress = raster_block_progress(100, len(window_list), count, progress)
@@ -195,7 +212,7 @@ with rasterio.open(water_intermediate, 'w', **output_profile) as dst:
     end_timing(start_time)
 
 # Close rasters
-for raster in [area_raster, zonal_raster, image_raster]:
+for raster in [area_raster, zonal_raster, image_raster, floodplain_raster]:
     raster.close()
 
 #### EXPORT CLOUD-OPTIMIZED GEOTIFF

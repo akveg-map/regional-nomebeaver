@@ -28,6 +28,9 @@ nodata_value = -128
 # Set random state
 random_state = 314
 
+# Configure GDAL
+gdal.UseExceptions()
+
 #### SET UP DIRECTORIES, FILES, AND FIELDS
 ####____________________________________________________
 
@@ -72,7 +75,7 @@ water_output = os.path.join(output_folder, output_name)
 # Load classifier
 print('Loading model and identifying features...')
 classifier = joblib.load(classifier_input)
-regressor = joblib.load(regressor_output)
+regressor = joblib.load(regressor_input)
 
 # Read threshold
 with open(threshold_input, "r") as threshold_reader:
@@ -129,24 +132,24 @@ with rasterio.open(water_intermediate, 'w', **output_profile) as dst:
     for block_index, window in area_raster.block_windows(1):
         # Read study area block
         area_data = area_raster.read(1, window=window)
-        rows, cols = area_block.shape
+        rows, cols = area_data.shape
 
         # Skip prediction if block contains no valid study area pixels
-        if not np.any(area_block == 1):
+        if not np.any(area_data == 1):
             response_2d = np.full((rows, cols), nodata_value, dtype=np.int8)
             dst.write(response_2d, window=window, indexes=1)
             count, progress = raster_block_progress(100, len(window_list), count, progress)
             continue
 
         # Read selected zonal covariate bands (3D: bands, rows, cols)
-        zonal_block = zonal_raster.read(indexes=selected_bands, window=window)
+        zonal_data = zonal_raster.read(indexes=selected_bands, window=window)
 
         # Read image composite bands (3D: bands, rows, cols)
-        image_block = image_raster.read(window=window)
-        comp_blue = image_block[0]
-        comp_green = image_block[1]
-        comp_red = image_block[2]
-        comp_nir = image_block[3]
+        image_data = image_raster.read(window=window)
+        comp_blue = image_data[0]
+        comp_green = image_data[1]
+        comp_red = image_data[2]
+        comp_nir = image_data[3]
 
         # Calculate normalized difference indices
         comp_ndwi = calc_normalized_index(comp_green, comp_nir)
@@ -154,7 +157,7 @@ with rasterio.open(water_intermediate, 'w', **output_profile) as dst:
 
         # Reshape spatial blocks into 2D tabular features (pixels, features)
         n_pixels = rows * cols
-        zonal_2d = zonal_block.reshape(len(selected_bands), n_pixels).T
+        zonal_2d = zonal_data.reshape(len(selected_bands), n_pixels).T
         image_2d = np.column_stack([
             comp_blue.ravel(),
             comp_green.ravel(),
