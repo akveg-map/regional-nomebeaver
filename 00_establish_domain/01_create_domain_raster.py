@@ -33,10 +33,10 @@ region_geopackage = os.path.join(project_folder, 'data_input/region_data/region_
 domain_layer = 'nomebeaver_domain_3338'
 
 # Define intermediate files
-domain_intermediate = os.path.join(project_folder, 'data_input/nomebeaver_domain_inter_2m_3338.tif')
+domain_intermediate = os.path.join(project_folder, 'data_input/region_data/nomebeaver_domain_inter_2m_3338.tif')
 
 # Define output files
-domain_output = os.path.join(project_folder, 'data_input/nomebeaver_domain_2m_3338.tif')
+domain_output = os.path.join(project_folder, 'data_input/region_data/nomebeaver_domain_2m_3338.tif')
 
 # Define resolution in meters
 resolution_m = 2.0

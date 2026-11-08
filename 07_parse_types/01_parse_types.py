@@ -53,8 +53,9 @@ project_folder = os.path.join(drive, root_folder, 'Projects/VegetationEcology/AK
 region_folder = os.path.join(project_folder, 'data_input/region_data')
 region_geopackage = os.path.join(region_folder, 'region_data_3338.gpkg')
 covariate_folder = os.path.join(project_folder, 'data_input/covariate_data')
-chm_folder = os.path.join(project_folder, 'data_input/canopy_height')
+chm_folder = os.path.join(project_folder, 'data_output/height_data')
 surficial_folder = os.path.join(project_folder, 'data_output/surficial_data')
+water_folder = os.path.join(project_folder, 'data_output/water_data')
 output_folder = os.path.join(project_folder, 'data_output/veg_types')
 tiles_folder = os.path.join(output_folder, 'tiles')
 schema_folder = os.path.join(drive, root_folder, 'Repositories/class-descriptions')
@@ -68,6 +69,7 @@ foliar_input = os.path.join(covariate_folder, 'foliar_zonal_2m_3338.tif')
 peat_input = os.path.join(covariate_folder, 'peat_probability_2m_3338.tif')
 fire_input = os.path.join(covariate_folder, 'fire_year_2m_3338.tif')
 burned_input = os.path.join(covariate_folder, 'recently_burned_2m_3338.tif')
+water_input = os.path.join(water_folder, 'surface_water_2m_3338.tif')
 surficial_input = os.path.join(surficial_folder, 'surficial_2m_3338.tif')
 schema_input = os.path.join(schema_folder, 'AKVEG_MapClass_Schema.csv')
 
@@ -145,7 +147,8 @@ raster_paths = {
     'surficial': surficial_input,
     'peat': peat_input,
     'fire': fire_input,
-    'burned': burned_input
+    'burned': burned_input,
+    'water': water_input
 }
 
 # Open dataset connections for input rasters
@@ -350,6 +353,7 @@ for index, row in grid_data.iterrows():
             wet_mask = (
                     (data['wetind'] >= 15) | (data['wetsed'] >= 10)
                     | (data['wetforb'] >= 20) | (data['wetgram'] >= 50)
+                    | (data['water'] >= 5)
             )
             peat_mask = (
                     (((data['sphagn'] >= 20) | (data['peat'] >= 50)) & (data['fire'] < 1984))
@@ -690,7 +694,8 @@ for index, row in grid_data.iterrows():
 
             # 244. Alaska-Yukon Post-Burn Recovering Birch-Willow Wet
             type_data = np.where(
-                (type_data == 5002) & (data['fire'] >= 1984) & (data['surficial'] != 8)
+                (type_data == 5002) & (data['fire'] >= 1984)
+                & (data['surficial'] != 8) & (data['water'] < 5)
                 & ((data['ndsalix'] + data['betshr']) >= 5),
                 244, type_data)
 
