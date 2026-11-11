@@ -14,28 +14,20 @@ import geopandas as gpd
 import rasterio
 from rasterio.crs import CRS
 from rasterio.transform import from_bounds
-from google.cloud import storage
 from akutils import *
 
 #### SET UP DIRECTORIES, FILES, AND FIELDS
 ####____________________________________________________
-
-# Initialize GCS Client
-storage_client = storage.Client()
-
-# Define GCS base name
-gcs_base = 'gs://regional-nomebeaver'
 
 # Set root directory
 drive = '/home'
 root_folder = 'twnawrocki'
 
 # Define folder structure
-input_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/region_data')
-output_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/imagery/tiles')
-region_geopackage = os.path.join(input_folder, 'region_data_3338.gpkg')
+region_geopackage = os.path.join(drive, root_folder, 'regional_nomebeaver/region_data/region_data_3338.gpkg')
+output_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/image_data/tiles')
 
-# Define input files
+# Define input file
 grid_layer = 'tiles_001_3338'
 
 # Set desired output resolution in meters
@@ -48,26 +40,29 @@ export_url = f'{base_url}/exportImage'
 #### PROCESSING SCRIPT
 ####____________________________________________________
 
-# Load the grid shapefile
-grid_data = gpd.read_file(region_geopackage, layer=grid_layer)
-grid_count = len(grid_data)
-print(f'Found {grid_count} grid cells to process.')
-
 # Identify naming column
 name_col = 'grid_code'
 
+# Load the grid shapefile
+grid_data = gpd.read_file(region_geopackage, layer=grid_layer)
+
+# Optional row filtering
+#target_grids = ['C280R014']
+#grid_data = grid_data[grid_data[name_col].isin(target_grids)].reset_index(drop=True)
+
+# Calculate number of grids to process
+grid_count = len(grid_data)
+print(f'Found {grid_count} grid cells to process.')
+
 # Iterate through each grid cell and export imagery
 for idx, row in grid_data.iterrows():
-    # Define final GCS path for the output
-    final_gcs_output = f'{gcs_base}/imagery/tiles/{row[name_col]}.tif'
+    # Define output file
+    image_output = os.path.join(output_folder, f'{row[name_col]}.tif')
 
     # Export image if it does not already exist in GCS
-    if not gcs_blob_exists(final_gcs_output, storage_client):
+    if not os.path.exists(image_output):
         print(f'Processing grid {idx + 1} of {grid_count}...')
         start_time = time.time()
-
-        # Define output file
-        image_output = os.path.join(output_folder, f'{row[name_col]}.tif')
 
         # Extract exact bounds of the current grid cell and round to 2 decimal places
         xmin, ymin, xmax, ymax = row.geometry.bounds
@@ -111,7 +106,7 @@ for idx, row in grid_data.iterrows():
                     if chunk:
                         f.write(chunk)
 
-            # Assign spatial reference to the downloaded TIFF using our calculated dimensions
+            # Assign spatial reference to the downloaded TIFF using calculated dimensions
             with rasterio.open(image_output, 'r+') as dataset:
                 dataset.crs = CRS.from_epsg(3338)
                 dataset.transform = from_bounds(
@@ -121,12 +116,6 @@ for idx, row in grid_data.iterrows():
                 )
             print(f'\tSaved and georeferenced: {row[name_col]}.tif')
 
-            # Upload prediction result to GCS
-            upload_to_gcs(image_output, final_gcs_output, storage_client)
-
-            # Remove processing datasets
-            os.remove(image_output)
-
         # Catch additional errors
         except Exception as e:
             print(f'  [Failed] Could not process {row[name_col]}: {e}')
@@ -135,5 +124,9 @@ for idx, row in grid_data.iterrows():
         # Provide a pause for the server
         end_timing(start_time)
         time.sleep(1)
+
+    # Print message for existing grid
+    else:
+        print(f'Grid {idx + 1} of {grid_count} already processed.')
 
 print('All grid downloads complete.')

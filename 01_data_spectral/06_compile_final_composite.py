@@ -34,7 +34,7 @@ gcs_base = 'gs://regional-nomebeaver'
 
 # Define final GCS path for the output
 output_name = 'composite_2m_3338.tif'
-final_gcs_output = f'{gcs_base}/imagery/{output_name}'
+final_gcs_output = f'{gcs_base}/image_data/{output_name}'
 
 # Set root directory
 drive = '/home'
@@ -42,20 +42,20 @@ root_folder = 'twnawrocki'
 
 # Define folder structure
 region_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/region_data')
-imagery_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/imagery')
+image_folder = os.path.join(drive, root_folder, 'regional_nomebeaver/image_data')
 
 # Define input files
 area_input = os.path.join(region_folder, 'nomebeaver_domain_2m_3338.tif')
-select_input = os.path.join(imagery_folder, 'vivid2023_omission_2m_3338.tif')
-vivid_input = os.path.join(imagery_folder, 'vivid2023_2m_3338.tif')
-custom_tiles = glob.glob(f'{imagery_folder}/export/*.tif')
+select_input = os.path.join(image_folder, 'vivid2023_omission_2m_3338.tif')
+vivid_input = os.path.join(image_folder, 'vivid2023_2m_3338.tif')
+custom_tiles = glob.glob(f'{image_folder}/export/*.tif')
 
 # Define intermediate files
-custom_vrt = os.path.join(imagery_folder, 'custom_merged.vrt')
-merged_intermediate = os.path.join(imagery_folder, 'image_merged.tif')
+custom_vrt = os.path.join(image_folder, 'custom_merged.vrt')
+merged_intermediate = os.path.join(image_folder, 'image_merged.tif')
 
 # Define output files
-image_output = os.path.join(imagery_folder, output_name)
+image_output = os.path.join(image_folder, output_name)
 
 #### PROCESS MERGED RASTER
 ####____________________________________________________

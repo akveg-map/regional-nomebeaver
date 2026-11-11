@@ -27,18 +27,18 @@ drive = 'C:/'
 root_folder = 'ACCS_Work/Projects/VegetationEcology/AKVEG_EVT_NomeBeaver/data'
 
 # Define folder structure
-imagery_folder = os.path.join(drive, root_folder, 'data_input/imagery')
-omission_geopackage = os.path.join(imagery_folder, 'vivid2023_omission_3338.gpkg')
+image_folder = os.path.join(drive, root_folder, 'data_input/image_data')
+omission_geopackage = os.path.join(image_folder, 'vivid2023_omission_3338.gpkg')
 
 # Define input files
 area_input = os.path.join(drive, root_folder, 'data_input/nomebeaver_domain_2m_3338.tif')
 select_layer = 'vivid2023_omission_3338'
 
 # Define intermediate files
-select_intermediate = os.path.join(imagery_folder, 'vivid2023_omission_inter_2m_3338.tif')
+select_intermediate = os.path.join(image_folder, 'vivid2023_omission_inter_2m_3338.tif')
 
 # Define output files
-select_output = os.path.join(imagery_folder, 'vivid2023_omission_2m_3338.tif')
+select_output = os.path.join(image_folder, 'vivid2023_omission_2m_3338.tif')
 
 #### CONVERT RANGE TO RASTER
 ####____________________________________________________
