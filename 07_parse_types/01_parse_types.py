@@ -939,15 +939,14 @@ input_files = glob.glob(os.path.join(tiles_folder, '*.tif'))
 # Merge raster tiles
 print(f'Merging {len(input_files)} tiles to cloud-optimized geotiff...')
 start_time = time.time()
-vrt_data = gdal.BuildVRT(
-    vrt_intermediate,
-    input_files,
-    outputSRS='EPSG:3338',
-    xRes=2,
-    yRes=2,
-    VRTNodata=nodata_value,
-    outputBounds=area_bounds)
-vrt_data = None
+vrt_ds = gdal.BuildVRT(vrt_intermediate,
+                       input_files,
+                       outputSRS='EPSG:3338',
+                       xRes=2,
+                       yRes=2,
+                       VRTNodata=nodata_value,
+                       outputBounds=area_bounds)
+vrt_ds = None
 
 # Set translation options for GDAL COG driver
 cog_options = gdal.TranslateOptions(
@@ -965,8 +964,8 @@ cog_options = gdal.TranslateOptions(
 
 # Translate raster to cloud-optimized geotiff
 print('Converting raster to cloud-optimized geotiff...')
-cog_data = gdal.Translate(type_output, vrt_intermediate, options=cog_options)
-cog_data = None
+cog_ds = gdal.Translate(type_output, vrt_intermediate, options=cog_options)
+cog_ds = None
 end_timing(start_time)
 
 # Remove intermediate datasets

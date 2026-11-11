@@ -99,8 +99,8 @@ if not os.path.exists(history_intermediate):
     )
 
     # Convert the selector polygons to raster
-    inter_data = gdal.Rasterize(correction_intermediate, surficial_geopackage, options=convert_options)
-    inter_data = None
+    inter_ds = gdal.Rasterize(correction_intermediate, surficial_geopackage, options=convert_options)
+    inter_ds = None
     end_timing(start_time)
 
 # Process corrected fire year raster

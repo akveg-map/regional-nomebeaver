@@ -70,14 +70,14 @@ if not os.path.exists(merged_intermediate):
     print(f'Merging {len(custom_tiles)} tiles...')
     start_time = time.time()
     # Merge raster tiles
-    vrt_data = gdal.BuildVRT(custom_vrt,
-                             custom_tiles,
-                             outputSRS='EPSG:3338',
-                             xRes=2,
-                             yRes=2,
-                             VRTNodata=nodata_value,
-                             outputBounds=area_bounds)
-    vrt_data = None
+    vrt_ds = gdal.BuildVRT(custom_vrt,
+                           custom_tiles,
+                           outputSRS='EPSG:3338',
+                           xRes=2,
+                           yRes=2,
+                           VRTNodata=nodata_value,
+                           outputBounds=area_bounds)
+    vrt_ds = None
     end_timing(start_time)
 
     # Merge image datasets
@@ -160,8 +160,8 @@ cog_options = gdal.TranslateOptions(
 # Translate raster to cloud-optimized geotiff
 print('Converting to cloud-optimized geotiff...')
 start_time = time.time()
-cog_data = gdal.Translate(image_output, merged_intermediate, options=cog_options)
-cog_data = None
+cog_ds = gdal.Translate(image_output, merged_intermediate, options=cog_options)
+cog_ds = None
 end_timing(start_time)
 
 # Upload post-processed raster to GCS

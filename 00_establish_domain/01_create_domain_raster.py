@@ -2,7 +2,7 @@
 # ---------------------------------------------------------------------------
 # Create domain raster
 # Author: Timm Nawrocki
-# Last Updated: 2026-10-15
+# Last Updated: 2026-11-08
 # Usage: Must be executed in a Python 3.12+ installation.
 # Description: 'Create domain raster' creates a raster to define the valid data area and grid alignment of the map domain. This script requires the manual creation of a map domain polygon feature class as a prerequisite.
 # ---------------------------------------------------------------------------
@@ -82,8 +82,8 @@ convert_options = gdal.RasterizeOptions(
 if not os.path.exists(domain_intermediate):
     print('Converting feature to raster...')
     start_time = time.time()
-    inter_data = gdal.Rasterize(domain_intermediate, region_geopackage, options=convert_options)
-    inter_data = None
+    inter_ds = gdal.Rasterize(domain_intermediate, region_geopackage, options=convert_options)
+    inter_ds = None
     end_timing(start_time)
 
 #### EXPORT CLOUD-OPTIMIZED GEOTIFF
@@ -106,10 +106,11 @@ cog_options = gdal.TranslateOptions(
 # Translate raster to cloud-optimized geotiff
 print('Converting raster to cloud-optimized geotiff...')
 start_time = time.time()
-cog_data = gdal.Translate(domain_output, domain_intermediate, options=cog_options)
-cog_data = None
+cog_ds = gdal.Translate(domain_output, domain_intermediate, options=cog_options)
+cog_ds = None
 end_timing(start_time)
 
 # Remove intermediate data
 if os.path.exists(domain_intermediate):
     os.remove(domain_intermediate)
+

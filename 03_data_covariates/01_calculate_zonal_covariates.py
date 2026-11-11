@@ -124,21 +124,24 @@ s2_median_paths = get_vsi_paths('akveg-data', 's2_sr_2019_2023_median_v20240724/
 if not os.path.exists(s1_seasonal_vrt):
     print('Building virtual raster for S1 covariates...')
     start_time = time.time()
-    gdal.BuildVRT(s1_seasonal_vrt, s1_paths, options=vrt_options)
+    vrt_ds = gdal.BuildVRT(s1_seasonal_vrt, s1_paths, options=vrt_options)
+    vrt_ds = None
     end_timing(start_time)
 
 # Create virtual raster for S2 seasonal covariates
 if not os.path.exists(s2_seasonal_vrt):
     print('Building virtual raster for S2 seasonal covariates...')
     start_time = time.time()
-    gdal.BuildVRT(s2_seasonal_vrt, s2_seasonal_paths, options=vrt_options)
+    vrt_ds = gdal.BuildVRT(s2_seasonal_vrt, s2_seasonal_paths, options=vrt_options)
+    vrt_ds = None
     end_timing(start_time)
 
 # Create virtual raster for S2 growing season median covariates
 if not os.path.exists(s2_median_vrt):
     print('Building virtual raster for S2 median covariates...')
     start_time = time.time()
-    gdal.BuildVRT(s2_median_vrt, s2_median_paths, options=vrt_options)
+    vrt_ds = gdal.BuildVRT(s2_median_vrt, s2_median_paths, options=vrt_options)
+    vrt_ds = None
     end_timing(start_time)
 
 #### CALCULATE BLOCK ZONAL STATISTICS

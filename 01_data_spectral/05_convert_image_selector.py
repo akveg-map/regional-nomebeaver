@@ -71,8 +71,8 @@ convert_options = gdal.RasterizeOptions(
 if not os.path.exists(select_intermediate):
     print('Converting range to raster...')
     start_time = time.time()
-    inter_data = gdal.Rasterize(select_intermediate, omission_geopackage, options=convert_options)
-    inter_data = None
+    inter_ds = gdal.Rasterize(select_intermediate, omission_geopackage, options=convert_options)
+    inter_ds = None
     end_timing(start_time)
 
 # Set translation options for GDAL COG driver
@@ -92,8 +92,8 @@ cog_options = gdal.TranslateOptions(
 # Translate raster to cloud-optimized geotiff
 print('Converting raster to cloud-optimized geotiff...')
 start_time = time.time()
-cog_data = gdal.Translate(select_output, select_intermediate, options=cog_options)
-cog_data = None
+cog_ds = gdal.Translate(select_output, select_intermediate, options=cog_options)
+cog_ds = None
 end_timing(start_time)
 
 # Remove intermediate file

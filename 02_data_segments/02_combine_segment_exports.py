@@ -71,20 +71,21 @@ if not os.path.exists(masked_intermediate):
     print(f'Merging {len(segment_tiles)} tiles...')
     start_time = time.time()
     # Merge raster tiles
-    vrt_data = gdal.BuildVRT(merged_vrt,
-                             segment_tiles,
-                             outputSRS='EPSG:3338',
-                             xRes=2,
-                             yRes=2,
-                             VRTNodata=nodata_value,
-                             outputBounds=area_bounds)
-    vrt_data = None
+    vrt_ds = gdal.BuildVRT(merged_vrt,
+                           segment_tiles,
+                           outputSRS='EPSG:3338',
+                           xRes=2,
+                           yRes=2,
+                           VRTNodata=nodata_value,
+                           outputBounds=area_bounds)
+    vrt_ds = None
     end_timing(start_time)
 
     # Convert VRT to raster for WhiteboxTools
     print('Converting VRT to GeoTIFF...')
     start_time = time.time()
-    gdal.Translate(merged_intermediate, merged_vrt, creationOptions=['BIGTIFF=YES'])
+    merged_ds = gdal.Translate(merged_intermediate, merged_vrt, creationOptions=['BIGTIFF=YES'])
+    merged_ds = None
     end_timing(start_time)
 
     # Run WhiteboxTools Clump (Connected Component Labeling)
@@ -171,8 +172,8 @@ cog_options = gdal.TranslateOptions(
 # Translate raster to cloud-optimized geotiff
 print('Converting to cloud-optimized geotiff...')
 start_time = time.time()
-cog_data = gdal.Translate(segment_output, masked_intermediate, options=cog_options)
-cog_data = None
+cog_ds = gdal.Translate(segment_output, masked_intermediate, options=cog_options)
+cog_ds = None
 end_timing(start_time)
 
 # Upload post-processed raster to GCS

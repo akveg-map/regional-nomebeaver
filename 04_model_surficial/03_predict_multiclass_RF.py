@@ -202,8 +202,8 @@ cog_options = gdal.TranslateOptions(
 # Translate raster to cloud-optimized geotiff
 print('Converting to cloud-optimized geotiff...')
 start_time = time.time()
-cog_data = gdal.Translate(surficial_output, surficial_intermediate, options=cog_options)
-cog_data = None
+cog_ds = gdal.Translate(surficial_output, surficial_intermediate, options=cog_options)
+cog_ds = None
 end_timing(start_time)
 
 # Remove intermediate datasets
